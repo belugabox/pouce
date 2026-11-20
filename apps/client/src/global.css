@@ -83,3 +83,22 @@ h3 {
         transition: none !important;
     }
 }
+
+/* Impression : la partition et ses doigtés, sans l'interface. */
+@media print {
+    .no-print,
+    #dock,
+    .mantine-Notifications-root {
+        display: none !important;
+    }
+
+    body {
+        background: #fff !important;
+        color: #000 !important;
+    }
+
+    /* Suggestions : lisibles sur papier (toujours en italique). */
+    #fingering-layer text {
+        fill-opacity: 1 !important;
+    }
+}

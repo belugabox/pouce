@@ -3,7 +3,9 @@
     "extends": "./tsconfig.json",
     "compilerOptions": {
         "noEmit": true,
-        "rootDir": "."
+        "rootDir": "..",
+        // Scripts PDMX : lecture du MusicXML avec le moteur du client (DOM).
+        "lib": ["ES2022", "DOM", "DOM.Iterable"]
     },
-    "include": ["src/**/*.ts", "test/**/*.ts"]
+    "include": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
 }

@@ -103,7 +103,7 @@ Ces résultats sont gardés par les tests de `apps/client/src/core/fingering/sug
 
 - Ne voit pas le phrasé implicite (sans liaisons écrites) ni les nuances.
 - Choix arbitraire entre deux doigtés de même coût (ex. 4-1 ou 5-1 sur une quinte à la main gauche).
-- Seules les deux premières portées sont traitées comme main droite / main gauche.
+- Main de chaque portée choisie par défaut (piano : haut à droite, bas à gauche ; chant ignoré), réglable par partition depuis la v2.
 - Sur les passages complexes, quelques corrections manuelles restent nécessaires.
 
 ### Pistes d'amélioration identifiées
@@ -113,7 +113,7 @@ Ces résultats sont gardés par les tests de `apps/client/src/core/fingering/sug
 - **Apprendre à partir de vrais doigtés** : jeu de données PIG (doigtés annotés par des pianistes,
   Université de Nagoya), pour estimer les coûts au lieu de les fixer à la main (modèle de Markov caché
   ou petit réseau de neurones).
-- Réglage manuel du tempo pour la suggestion.
+- ~~Réglage manuel du tempo pour la suggestion.~~ Fait en v2.
 - Référence open source existante : le projet Python « pianoplayer ».
 
 ---
@@ -142,7 +142,15 @@ d'interroger des sites tiers à la volée : recherche instantanée, tolérante a
 compositeur / difficulté, tri par popularité. Idée plus avancée : **recherche sémantique**
 (« un morceau lent et mélancolique pour débutant »).
 
-La table `scores` du serveur est prête pour cet index (colonnes `source`, `license`, `popularity`).
+**Fait en v2** : index de 2 335 partitions de piano tirées de PDMX (`apps/server/scripts/pdmx`, voir le README).
+
+- Licence déclarée ≠ licence réelle : dans les 36 000 partitions de piano seul « CC0 / domaine public » sans conflit, les plus vues sont des chansons récentes (Lewis Capaldi, Coldplay…). On ne garde donc que les **œuvres** reconnues libres : compositeur mort en 1955 au plus tard (liste fermée, règle européenne des 70 ans), dates de vie écrites, œuvre libre célèbre reconnue par son titre, ou « traditionnel » dans le champ compositeur (la catégorie « Misc Traditional » et « Anonymous » ne suffisent pas : « Petit Papa Noël », chansons vocaloid…). Medleys et genres pop/rock/électro écartés.
+- Piano à deux portées vérifié dans le MusicXML (le CSV ne le dit pas), paroles et mentions de droits retirées.
+- Doublons : la version la plus populaire. Popularité = vues, favoris et notes, en échelle logarithmique.
+- Difficulté estimée par le client (`core/difficulty.ts`) : vitesse, accords, écarts, sauts, touches noires, voix, indépendance des mains, effort du meilleur doigté. Réglée sur des morceaux connus (comptines en Débutant, Menuet en sol en Facile, Lettre à Élise et 1er mouvement de la Sonate au clair de lune en Intermédiaire, Clair de lune de Debussy et Rhapsodie hongroise n° 2 en Avancé).
+- Recherche en mémoire côté serveur : tolérante aux fautes (distance d'édition), équivalences français/anglais (valse/waltz, « lettre à Élise »…), filtre par niveau, tri.
+- Bouton « Signaler » sur chaque fiche ; un outil en ligne de commande liste les signalements et retire une partition.
+- Limite : la règle des 70 ans est européenne ; certaines œuvres de compositeurs morts entre 1926 et 1955 restent protégées aux États-Unis (par exemple Rachmaninov, Prokofiev, Bartók, Ravel pour leurs œuvres publiées après 1930).
 
 ### PDF et photos → MusicXML (reconnaissance optique, OMR)
 
@@ -169,16 +177,17 @@ Pour exploiter les PDF d'IMSLP, un PDF acheté ou une partition papier photograp
 
 ## 5. Idées de fonctionnalités non encore faites
 
-- Index de recherche basé sur PDMX (cf. section 3).
 - Import PDF / photo avec OMR et écran de vérification.
 - **Mode PDF « calque »** pour les partitions sans MusicXML : afficher le PDF et poser les doigtés
   à des positions libres, export en PDF annoté.
 - Apprentissage à partir des corrections de l'utilisateur.
 - Réglage du tempo pour la suggestion.
 - Sauvegarde en ligne et partage des partitions annotées.
-- Partitions à plusieurs instruments.
+- Partitions à plusieurs instruments : en partie (choix des portées jouées, v2).
 
 Fait en v1 : hors ligne (PWA), suppression d'une partition importée.
+
+Fait en v2 : index PDMX, recherche serveur (fautes, niveaux, tris), fiche et signalement, partitions du catalogue gardées hors ligne, niveau estimé des imports, mains par portée, tempo de la suggestion, annuler / rétablir, impression avec les doigtés.
 
 ## 6. Conventions d'interface retenues
 

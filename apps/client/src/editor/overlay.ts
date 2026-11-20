@@ -1,4 +1,4 @@
-import type { Annotations } from '@/core/fingering/suggest';
+import type { Annotations, HandOf } from '@/core/fingering/suggest';
 import type { ScoreNote } from '@/core/musicxml';
 
 import type { Positions } from './osmd';
@@ -15,9 +15,9 @@ const INK = { rh: '#1f5fbf', lh: '#b0306a' };
 const LAYER_ID = 'fingering-layer';
 
 /**
- * Calque des doigtés, par-dessus le SVG d'OSMD : chiffres au-dessus de la
- * portée du haut (main droite), au-dessous des autres (main gauche),
- * empilés dans les accords ; sélection en surbrillance.
+ * Calque des doigtés, par-dessus le SVG d'OSMD : chiffres au-dessus des
+ * notes de la main droite, au-dessous de celles de la main gauche, empilés
+ * dans les accords ; sélection en surbrillance.
  */
 export const drawOverlay = (
     svg: SVGSVGElement,
@@ -27,8 +27,10 @@ export const drawOverlay = (
         annotations,
         selected,
         zoom,
+        handOf,
     }: {
         notes: ScoreNote[];
+        handOf: HandOf;
         positions: Positions;
         annotations: Annotations;
         selected: string | null;
@@ -71,11 +73,11 @@ export const drawOverlay = (
         const finger = annotations.f[n.key];
         if (!finger) continue;
         const e = extent.get(n.group)!;
-        const y =
-            n.staff === 1
-                ? Math.min(p.top - 1.4, e.min - 2.6) - n.rank * 1.5
-                : Math.max(p.top + 4 + 2.4, e.max + 3) +
-                  (n.size - 1 - n.rank) * 1.5;
+        const right = handOf(n) !== 2;
+        const y = right
+            ? Math.min(p.top - 1.4, e.min - 2.6) - n.rank * 1.5
+            : Math.max(p.top + 4 + 2.4, e.max + 3) +
+              (n.size - 1 - n.rank) * 1.5;
         const text = document.createElementNS(NS, 'text');
         text.setAttribute('x', String(cx));
         text.setAttribute('y', String(y * U));
@@ -87,7 +89,7 @@ export const drawOverlay = (
         );
         text.setAttribute('font-weight', '700');
         text.setAttribute('font-size', String(Math.max(13, 12 / zoom)));
-        text.setAttribute('fill', n.staff === 1 ? INK.rh : INK.lh);
+        text.setAttribute('fill', right ? INK.rh : INK.lh);
         // Suggestion pas encore confirmée : en clair et en italique.
         if (annotations.auto[n.key]) {
             text.setAttribute('fill-opacity', '0.5');

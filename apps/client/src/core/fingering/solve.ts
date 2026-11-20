@@ -44,8 +44,15 @@ export const solve = (
     groups: SolveGroup[],
     hand: Hand,
     locked: Record<string, number> = {},
-): Record<string, number> => {
-    if (!groups.length) return {};
+): Record<string, number> => solveWithCost(groups, hand, locked).fingers;
+
+/** Comme `solve`, avec l'effort total du doigté trouvé. */
+export const solveWithCost = (
+    groups: SolveGroup[],
+    hand: Hand,
+    locked: Record<string, number> = {},
+): { fingers: Record<string, number>; cost: number } => {
+    if (!groups.length) return { fingers: {}, cost: 0 };
     const pitches = groups.map((g) => g.pitches.slice(0, MAX));
     const states = groups.map((g, gi) => {
         let cs = combos(pitches[gi]!.length);
@@ -89,10 +96,11 @@ export const solve = (
 
     const out: Record<string, number> = {};
     let idx = prev.reduce((b, s, i) => (s.cost < prev[b]!.cost ? i : b), 0);
+    const cost = prev[idx]!.cost;
     for (let i = groups.length - 1; i >= 0; i--) {
         const st = states[i]![idx]!;
         st.forEach((f, j) => (out[groups[i]!.keys[j]!] = f));
         idx = trail[i]![idx]!.back;
     }
-    return out;
+    return { fingers: out, cost };
 };

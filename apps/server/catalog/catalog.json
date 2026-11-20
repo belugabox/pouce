@@ -6,7 +6,10 @@
         "level": "Débutant",
         "tags": "symphonie 9 hymne europe joie",
         "source": "pouce",
-        "license": "Domaine public"
+        "license": "Domaine public",
+        "difficulty": 1.3,
+        "duration": 18,
+        "measures": 8
     },
     {
         "id": "lune",
@@ -15,7 +18,10 @@
         "level": "Débutant",
         "tags": "comptine chanson enfant pierrot",
         "source": "pouce",
-        "license": "Domaine public"
+        "license": "Domaine public",
+        "difficulty": 1,
+        "duration": 20,
+        "measures": 8
     },
     {
         "id": "jacques",
@@ -24,7 +30,10 @@
         "level": "Débutant",
         "tags": "canon comptine dormez-vous",
         "source": "pouce",
-        "license": "Domaine public"
+        "license": "Domaine public",
+        "difficulty": 1.3,
+        "duration": 20,
+        "measures": 8
     },
     {
         "id": "twinkle",
@@ -33,7 +42,10 @@
         "level": "Débutant",
         "tags": "twinkle little star étoile mozart",
         "source": "pouce",
-        "license": "Domaine public"
+        "license": "Domaine public",
+        "difficulty": 0.7,
+        "duration": 19,
+        "measures": 16
     },
     {
         "id": "menuet",
@@ -42,15 +54,21 @@
         "level": "Facile",
         "tags": "bach anna magdalena minuet menuet sol",
         "source": "pouce",
-        "license": "Domaine public"
+        "license": "Domaine public",
+        "difficulty": 2.4,
+        "duration": 12,
+        "measures": 8
     },
     {
         "id": "prelude",
         "title": "Prélude en do majeur (mes. 1–4)",
         "composer": "Jean-Sébastien Bach (BWV 846, arr. simplifié)",
-        "level": "Intermédiaire",
+        "level": "Facile",
         "tags": "clavier bien tempéré prelude arpège",
         "source": "pouce",
-        "license": "Domaine public"
+        "license": "Domaine public",
+        "difficulty": 3.7,
+        "duration": 15,
+        "measures": 4
     }
 ]

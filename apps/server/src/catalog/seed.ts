@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import type { Db } from '../db';
 import { scores } from '../db/schema';
+import { packXml } from './store';
 
 // `apps/server/catalog`, depuis `src/catalog` (dev) comme `dist/catalog` (build).
 export const CATALOG_DIR = path.join(__dirname, '../../catalog');
@@ -12,9 +13,12 @@ interface CatalogFile {
     title: string;
     composer: string;
     level: string | null;
+    difficulty?: number | null;
     tags: string;
     source: string;
     license: string;
+    duration?: number | null;
+    measures?: number | null;
 }
 
 /**
@@ -30,9 +34,16 @@ export const seedCatalog = (db: Db, dir = CATALOG_DIR) => {
         for (const entry of entries) {
             const row = {
                 ...entry,
-                xml: readFileSync(
-                    path.join(dir, `${entry.id}.musicxml`),
-                    'utf-8',
+                difficulty: entry.difficulty ?? null,
+                duration: entry.duration ?? null,
+                measures: entry.measures ?? null,
+                // Sans popularité : mis en avant dans la recherche.
+                popularity: null,
+                content: packXml(
+                    readFileSync(
+                        path.join(dir, `${entry.id}.musicxml`),
+                        'utf-8',
+                    ),
                 ),
             };
             tx.insert(scores)

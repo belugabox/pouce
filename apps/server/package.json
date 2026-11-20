@@ -8,7 +8,10 @@
         "start": "node dist/main.js",
         "dev": "tsx watch ./src/main.ts",
         "test": "tsc -p tsconfig.test.json && vitest run",
-        "db:generate": "drizzle-kit generate"
+        "db:generate": "drizzle-kit generate",
+        "pdmx": "tsx scripts/pdmx/build.ts",
+        "catalog:levels": "tsx scripts/catalog-levels.ts",
+        "admin": "tsx src/tools/admin.ts"
     },
     "dependencies": {
         "@hono/node-server": "^1.19.7",
@@ -24,7 +27,12 @@
     "devDependencies": {
         "@types/better-sqlite3": "^9.6.0",
         "@types/node": "^22.19.2",
+        "@types/tar-stream": "^3.1.5",
+        "csv-parse": "^7.0.3",
         "drizzle-kit": "^0.31.11",
+        "fflate": "^0.8.3",
+        "linkedom": "^0.18.15",
+        "tar-stream": "^3.2.2",
         "tsx": "^4.21.0",
         "typescript": "^5.9.3",
         "vitest": "^4.1.10"

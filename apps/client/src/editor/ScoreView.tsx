@@ -2,7 +2,7 @@ import { Box, Text } from '@mantine/core';
 import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { useEffect, useRef, useState } from 'react';
 
-import type { Annotations } from '@/core/fingering/suggest';
+import type { Annotations, HandOf } from '@/core/fingering/suggest';
 import type { ScoreNote } from '@/core/musicxml';
 
 import { type Positions, collectPositions, createOsmd } from './osmd';
@@ -38,11 +38,13 @@ export const ScoreView = ({
     annotations,
     selected,
     zoom,
+    handOf,
     onSelect,
     onLayout,
 }: {
     xml: string;
     notes: ScoreNote[];
+    handOf: HandOf;
     annotations: Annotations;
     selected: string | null;
     zoom: number;
@@ -93,8 +95,15 @@ export const ScoreView = ({
     useEffect(() => {
         const svg = container.current?.querySelector('svg');
         if (!svg || status !== 'ready') return;
-        drawOverlay(svg, { notes, positions, annotations, selected, zoom });
-    }, [notes, positions, annotations, selected, zoom, status]);
+        drawOverlay(svg, {
+            notes,
+            positions,
+            annotations,
+            selected,
+            zoom,
+            handOf,
+        });
+    }, [notes, positions, annotations, selected, zoom, status, handOf]);
 
     // Note sélectionnée cachée (sous le clavier, hors de l'écran) : défiler.
     useEffect(() => {

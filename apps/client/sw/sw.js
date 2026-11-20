@@ -4,15 +4,16 @@
 //
 // - Application (scripts, styles, polices, icônes, index.html, et
 //   OpenSheetMusicDisplay) gardée sur l'appareil : Pouce s'ouvre sans réseau.
-// - Catalogue (`/api/catalog…`) : le réseau d'abord, la dernière réponse
-//   gardée sinon. Une partition déjà ouverte se rouvre hors ligne.
-// - Les partitions importées et les doigtés sont dans IndexedDB : rien à
-//   faire ici.
+// - Liste du catalogue sans recherche (`/api/catalog`) : le réseau d'abord,
+//   la dernière réponse gardée sinon.
+// - Partitions ouvertes, importées, doigtés et réglages : dans IndexedDB,
+//   gérés par l'application. Rien à faire ici.
 
 const VERSION = '__VERSION__';
 const ASSETS = __ASSETS__;
 const APP_CACHE = `pouce-app-${VERSION}`;
-const API_CACHE = 'pouce-api';
+// Format des réponses de l'API : changer le nom à chaque changement.
+const API_CACHE = 'pouce-api-2';
 // Page ou API : le réseau d'abord, l'appareil s'il ne répond pas assez vite.
 const NETWORK_TIMEOUT_MS = 4000;
 
@@ -34,6 +35,12 @@ self.addEventListener('activate', (event) => {
                 (name) => name.startsWith('pouce-app-') && name !== APP_CACHE,
             );
             for (const name of names.slice(0, -1)) await caches.delete(name);
+            // Réponses de l'API dans un ancien format.
+            for (const name of await caches.keys()) {
+                if (name.startsWith('pouce-api') && name !== API_CACHE) {
+                    await caches.delete(name);
+                }
+            }
             await self.clients.claim();
         })(),
     );
@@ -63,7 +70,7 @@ const navigate = async (request) => {
     }
 };
 
-/** Catalogue : réponse du réseau gardée, rendue quand il ne répond pas. */
+/** Liste du catalogue : réponse du réseau gardée, rendue quand il ne répond pas. */
 const catalog = async (request) => {
     const cache = await caches.open(API_CACHE);
     try {
@@ -94,7 +101,14 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(request.url);
     if (url.origin !== self.location.origin) return;
 
-    if (url.pathname.startsWith('/api/catalog')) {
+    // Liste du catalogue sans recherche (première page) : gardée pour
+    // l'ouverture hors ligne. Les recherches et les partitions passent par le
+    // réseau ; l'appli garde elle-même les partitions ouvertes (IndexedDB).
+    if (
+        url.pathname === '/api/catalog' &&
+        !url.searchParams.get('q') &&
+        !url.searchParams.get('offset')
+    ) {
         event.respondWith(catalog(request));
     } else if (url.pathname.startsWith('/api/')) {
         // Réseau seulement.

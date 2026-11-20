@@ -268,3 +268,20 @@ export const readMeta = (doc: Document) => ({
         doc.querySelector('creator[type="composer"]')?.textContent ?? ''
     ).trim(),
 });
+
+/** Nom de chaque partie (« Piano », « Voix »…), dans l'ordre des parties. */
+export const readPartNames = (doc: Document): string[] => {
+    const names = new Map<string, string>();
+    for (const sp of Array.from(
+        doc.querySelectorAll('part-list > score-part'),
+    )) {
+        const name =
+            kid(sp, 'part-name')?.textContent?.trim() ||
+            kid(sp, 'part-abbreviation')?.textContent?.trim() ||
+            '';
+        names.set(sp.getAttribute('id') ?? '', name);
+    }
+    return kids(doc.documentElement, 'part').map(
+        (p) => names.get(p.getAttribute('id') ?? '') ?? '',
+    );
+};

@@ -2,50 +2,86 @@ import {
     ActionIcon,
     Box,
     Button,
+    Divider,
     Group,
+    Menu,
     Text,
     Title,
+    Tooltip,
     UnstyledButton,
 } from '@mantine/core';
-import { useLocalStorage } from '@mantine/hooks';
+import { useDisclosure, useLocalStorage } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+    IconAdjustmentsHorizontal,
+    IconArrowBackUp,
+    IconArrowForwardUp,
     IconChevronLeft,
+    IconDots,
     IconDownload,
+    IconInfoCircle,
     IconMinus,
     IconPlus,
+    IconPrinter,
 } from '@tabler/icons-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 
 import { PageLoader } from '@/components/PageLoader';
 import { buildExport, slug } from '@/core/exportXml';
+import { handResolver, listStaves } from '@/core/fingering/hands';
 import {
     assignFinger,
     clearSuggestions,
-    handOf,
     suggestAll,
 } from '@/core/fingering/suggest';
-import { indexScore, parseXml } from '@/core/musicxml';
+import { indexScore, parseXml, readPartNames } from '@/core/musicxml';
 import { FingerDock } from '@/editor/FingerDock';
+import { PieceInfo, type PieceMeta } from '@/editor/PieceInfo';
 import { ScoreView } from '@/editor/ScoreView';
-import { buildOrder, otherHand, step } from '@/editor/navigation';
+import { SuggestSettings } from '@/editor/SuggestSettings';
+import { buildOrder, handIn, otherHand, step } from '@/editor/navigation';
 import type { Positions } from '@/editor/osmd';
-import { useAnnotations } from '@/editor/useAnnotations';
+import { useAnnotations, usePieceSettings } from '@/editor/useAnnotations';
 import { fetchScore } from '@/services/api';
 import { useQuery } from '@/services/useQuery';
-import { type PieceSource, getImport, pieceKey } from '@/storage/db';
+import {
+    type PieceSource,
+    getImport,
+    getLibraryPiece,
+    keepLibraryPiece,
+    pieceKey,
+} from '@/storage/db';
 
 const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
 
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 1.6;
 
-const loadPiece = async (source: PieceSource, id: string) => {
-    if (source === 'catalogue') return fetchScore(id);
+type LoadedPiece = PieceMeta & { xml: string; offline?: boolean };
+
+/**
+ * Partition du catalogue : depuis le serveur, gardée sur l'appareil pour la
+ * rouvrir hors ligne ; sinon la copie gardée. Import : depuis l'appareil.
+ */
+const loadPiece = async (
+    source: PieceSource,
+    id: string,
+): Promise<LoadedPiece> => {
+    if (source === 'catalogue') {
+        try {
+            const piece = await fetchScore(id);
+            keepLibraryPiece(piece).catch((err: unknown) => console.error(err));
+            return piece;
+        } catch (err) {
+            const kept = await getLibraryPiece(id).catch(() => undefined);
+            if (kept) return { ...kept, offline: true };
+            throw err;
+        }
+    }
     const piece = await getImport(id);
     if (!piece) throw new Error('Cette partition n’est plus sur cet appareil.');
-    return piece;
+    return { ...piece, level: piece.level ?? null };
 };
 
 /** Télécharge un texte dans un fichier. */
@@ -71,18 +107,42 @@ const Dot = ({ color }: { color: string }) => (
     />
 );
 
+const ToolIcon = ({
+    label,
+    children,
+    ...props
+}: {
+    label: string;
+    children: React.ReactNode;
+    onClick: () => void;
+    disabled?: boolean;
+}) => (
+    <Tooltip label={label} openDelay={500}>
+        <ActionIcon variant="default" size={40} aria-label={label} {...props}>
+            {children}
+        </ActionIcon>
+    </Tooltip>
+);
+
 const EditorPage = () => {
     const params = useParams();
     const source: PieceSource =
         params.source === 'import' ? 'import' : 'catalogue';
     const id = params.id ?? '';
+    const key = pieceKey(source, id);
     const piece = useQuery(() => loadPiece(source, id), [source, id]);
     const xml = piece.data?.xml;
-    const index = useMemo(
-        () => (xml ? indexScore(parseXml(xml)) : null),
-        [xml],
-    );
-    const { annotations, update } = useAnnotations(pieceKey(source, id), index);
+    const parsed = useMemo(() => {
+        if (!xml) return null;
+        const doc = parseXml(xml);
+        return { index: indexScore(doc), partNames: readPartNames(doc) };
+    }, [xml]);
+    const index = parsed?.index ?? null;
+    const { annotations, update, undo, redo, canUndo, canRedo } =
+        useAnnotations(key, index);
+    const [settings, setSettings] = usePieceSettings(key);
+    const [settingsOpen, settingsModal] = useDisclosure(false);
+    const [infoOpen, infoModal] = useDisclosure(false);
 
     const [zoom, setZoom] = useLocalStorage({
         key: 'pouce:zoom',
@@ -92,32 +152,55 @@ const EditorPage = () => {
     const [positions, setPositions] = useState<Positions>(new Map());
     const [selected, setSelected] = useState<string | null>(null);
 
+    const staves = useMemo(() => listStaves(index?.notes ?? []), [index]);
+    const handOf = useMemo(
+        () => handResolver(index?.notes ?? [], settings.hands),
+        [index, settings.hands],
+    );
     const order = useMemo(
-        () => buildOrder(index?.notes ?? [], (key) => positions.has(key)),
-        [index, positions],
+        () => buildOrder(index?.notes ?? [], (k) => positions.has(k), handOf),
+        [index, positions, handOf],
     );
     const selectedNote = selected ? index?.byKey.get(selected) : undefined;
+    const selectedHand = selected ? handIn(order, selected) : null;
 
     useEffect(() => window.scrollTo(0, 0), [source, id]);
+    useEffect(() => {
+        if (piece.data?.title) document.title = `${piece.data.title} — Pouce`;
+        return () => {
+            document.title = 'Pouce';
+        };
+    }, [piece.data?.title]);
+
+    /** Sélection au toucher : seulement les notes d'une portée jouée. */
+    const select = (k: string | null) =>
+        setSelected(k && handIn(order, k) ? k : null);
 
     const assign = (finger: number) => {
-        if (!selectedNote) return;
+        if (!selectedNote || !selectedHand) return;
         update((a) => assignFinger(a, selectedNote.key, finger));
         // Saisie : on passe à la note suivante de la même main.
         if (finger)
             setSelected(step(order, selectedNote, 1) ?? selectedNote.key);
     };
 
+    const tempo = settings.tempo ?? index?.tempo ?? 100;
+
     const suggest = () => {
         if (!index || !annotations) return;
         const { annotations: next, added } = suggestAll(
             index.notes,
             annotations,
+            {
+                hands: settings.hands,
+                tempo: settings.tempo,
+                scoreTempo: index.tempo,
+            },
         );
-        update(() => next);
+        if (added) update(() => next);
         notifications.show({
             message: added
-                ? `${plural(added, 'doigté')} suggéré${added > 1 ? 's' : ''} (tempo ♩ = ${Math.round(index.tempo)}, liaisons et silences pris en compte)`
+                ? `${plural(added, 'doigté')} suggéré${added > 1 ? 's' : ''} (tempo ♩ = ${Math.round(tempo)}, liaisons et silences pris en compte)`
                 : 'Toutes les notes ont déjà un doigté.',
         });
     };
@@ -136,18 +219,31 @@ const EditorPage = () => {
         });
     };
 
-    // Raccourcis clavier : 1 à 5, effacer, flèches, Échap.
+    const zoomBy = (delta: number) =>
+        setZoom((z) =>
+            Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(z + delta).toFixed(1))),
+        );
+
+    // Raccourcis clavier : 1 à 5, effacer, flèches, Échap, annuler.
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement | null;
             if (
-                e.ctrlKey ||
-                e.metaKey ||
-                e.altKey ||
-                target?.closest('input, textarea, [contenteditable="true"]')
+                target?.closest(
+                    'input, textarea, select, [contenteditable="true"], [role="dialog"]',
+                )
             ) {
                 return;
             }
+            if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+                const k = e.key.toLowerCase();
+                if (k === 'z' && !e.shiftKey) undo();
+                else if ((k === 'z' && e.shiftKey) || k === 'y') redo();
+                else return;
+                e.preventDefault();
+                return;
+            }
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
             if (/^[1-5]$/.test(e.key)) {
                 assign(Number(e.key));
             } else if (['Backspace', 'Delete', '0'].includes(e.key)) {
@@ -164,13 +260,13 @@ const EditorPage = () => {
                 );
             } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                 if (!selectedNote) return;
-                const key = otherHand(
+                const k = otherHand(
                     order,
                     selectedNote,
-                    (k) => positions.get(k)?.x ?? 0,
-                    (k) => index?.byKey.get(k)?.measure ?? 0,
+                    (n) => positions.get(n)?.x ?? 0,
+                    (n) => index?.byKey.get(n)?.measure ?? 0,
                 );
-                if (key) setSelected(key);
+                if (k) setSelected(k);
             } else if (e.key === 'Escape') {
                 setSelected(null);
             } else {
@@ -192,15 +288,13 @@ const EditorPage = () => {
             </Box>
         );
     }
-    if (!piece.data || !index || !annotations) return <PageLoader />;
+    if (!piece.data || !index || !annotations || !parsed) {
+        return <PageLoader />;
+    }
 
     const count = Object.keys(annotations.f).length;
     const autoCount = Object.keys(annotations.auto).length;
-    const hand = selectedNote
-        ? handOf(selectedNote.staff) === 1
-            ? 'rh'
-            : 'lh'
-        : null;
+    const hand = selectedHand === 1 ? 'rh' : selectedHand === 2 ? 'lh' : null;
     const hint = selectedNote
         ? `${hand === 'rh' ? 'Main droite' : 'Main gauche'}, mesure ${selectedNote.measure + 1} — choisis un doigt`
         : positions.size
@@ -210,6 +304,7 @@ const EditorPage = () => {
     return (
         <Box pb={150}>
             <Box
+                className="no-print"
                 pos="sticky"
                 top="env(safe-area-inset-top, 0px)"
                 bg="var(--mantine-color-body)"
@@ -236,75 +331,163 @@ const EditorPage = () => {
                     >
                         <IconChevronLeft size={22} />
                     </ActionIcon>
-                    <Box flex={1} miw={0}>
+                    <UnstyledButton
+                        flex={1}
+                        miw={0}
+                        onClick={infoModal.open}
+                        aria-label="Fiche de la partition"
+                    >
                         <Title order={2} fz="lg" lineClamp={1}>
                             {piece.data.title}
                         </Title>
                         <Text fz="sm" c="dimmed" truncate>
                             {piece.data.composer}
+                            {piece.data.offline && ' — copie sur l’appareil'}
                         </Text>
-                    </Box>
-                    <Group gap={6} wrap="nowrap">
-                        <ActionIcon
-                            variant="default"
-                            size={44}
-                            aria-label="Dézoomer"
-                            disabled={zoom <= ZOOM_MIN}
-                            onClick={() =>
-                                setZoom((z) =>
-                                    Math.max(ZOOM_MIN, +(z - 0.1).toFixed(1)),
-                                )
-                            }
-                        >
-                            <IconMinus size={18} />
-                        </ActionIcon>
-                        <ActionIcon
-                            variant="default"
-                            size={44}
-                            aria-label="Zoomer"
-                            disabled={zoom >= ZOOM_MAX}
-                            onClick={() =>
-                                setZoom((z) =>
-                                    Math.min(ZOOM_MAX, +(z + 0.1).toFixed(1)),
-                                )
-                            }
-                        >
-                            <IconPlus size={18} />
-                        </ActionIcon>
-                        <Button
-                            variant="default"
-                            h={44}
-                            px={12}
-                            leftSection={<IconDownload size={18} />}
-                            onClick={exportScore}
-                            aria-label="Exporter en MusicXML"
-                        >
-                            <Text span visibleFrom="xs" inherit>
-                                Exporter
-                            </Text>
-                        </Button>
-                    </Group>
+                    </UnstyledButton>
+                    <Button
+                        variant="default"
+                        h={44}
+                        px={12}
+                        leftSection={<IconDownload size={18} />}
+                        onClick={exportScore}
+                        aria-label="Exporter en MusicXML"
+                    >
+                        <Text span visibleFrom="xs" inherit>
+                            Exporter
+                        </Text>
+                    </Button>
+                    <Menu position="bottom-end">
+                        <Menu.Target>
+                            <ActionIcon
+                                variant="default"
+                                size={44}
+                                aria-label="Plus d’actions"
+                            >
+                                <IconDots size={20} />
+                            </ActionIcon>
+                        </Menu.Target>
+                        <Menu.Dropdown>
+                            <Menu.Item
+                                leftSection={<IconInfoCircle size={16} />}
+                                onClick={infoModal.open}
+                            >
+                                Fiche de la partition
+                            </Menu.Item>
+                            <Menu.Item
+                                leftSection={
+                                    <IconAdjustmentsHorizontal size={16} />
+                                }
+                                onClick={settingsModal.open}
+                            >
+                                Réglages de la suggestion
+                            </Menu.Item>
+                            <Menu.Item
+                                leftSection={<IconPrinter size={16} />}
+                                onClick={() => {
+                                    setSelected(null);
+                                    setTimeout(() => window.print(), 50);
+                                }}
+                            >
+                                Imprimer avec les doigtés
+                            </Menu.Item>
+                        </Menu.Dropdown>
+                    </Menu>
                 </Group>
             </Box>
 
             <Group
+                className="no-print"
                 maw={1100}
                 mx="auto"
                 px={18}
                 pt={10}
+                gap="8px 14px"
+                wrap="wrap"
+            >
+                <Group gap={6} wrap="nowrap">
+                    <ToolIcon
+                        label="Annuler"
+                        onClick={undo}
+                        disabled={!canUndo}
+                    >
+                        <IconArrowBackUp size={18} />
+                    </ToolIcon>
+                    <ToolIcon
+                        label="Rétablir"
+                        onClick={redo}
+                        disabled={!canRedo}
+                    >
+                        <IconArrowForwardUp size={18} />
+                    </ToolIcon>
+                    <Divider orientation="vertical" mx={2} />
+                    <ToolIcon
+                        label="Dézoomer"
+                        onClick={() => zoomBy(-0.1)}
+                        disabled={zoom <= ZOOM_MIN}
+                    >
+                        <IconMinus size={18} />
+                    </ToolIcon>
+                    <ToolIcon
+                        label="Zoomer"
+                        onClick={() => zoomBy(0.1)}
+                        disabled={zoom >= ZOOM_MAX}
+                    >
+                        <IconPlus size={18} />
+                    </ToolIcon>
+                </Group>
+                <Group gap="6px 12px" ml="auto" wrap="wrap" justify="flex-end">
+                    {autoCount > 0 && (
+                        <UnstyledButton
+                            c="dimmed"
+                            td="underline"
+                            fz="sm"
+                            py={6}
+                            style={{ whiteSpace: 'nowrap' }}
+                            onClick={clearAuto}
+                        >
+                            Retirer les suggestions
+                        </UnstyledButton>
+                    )}
+                    <Button.Group>
+                        <Button onClick={suggest}>Suggérer les doigtés</Button>
+                        <Button
+                            px={10}
+                            onClick={settingsModal.open}
+                            aria-label="Réglages de la suggestion"
+                            style={{
+                                borderLeft:
+                                    '1px solid rgba(255, 255, 255, 0.35)',
+                            }}
+                        >
+                            <IconAdjustmentsHorizontal size={18} />
+                        </Button>
+                    </Button.Group>
+                </Group>
+            </Group>
+
+            <Group
+                className="no-print"
+                maw={1100}
+                mx="auto"
+                px={18}
+                pt={8}
                 pb={4}
-                gap="6px 14px"
+                gap="4px 14px"
                 c="dimmed"
                 fz="sm"
             >
                 <span>
                     <Dot color="var(--pouce-rh)" />
-                    Main droite (portée du haut)
+                    Main droite
                 </span>
                 <span>
                     <Dot color="var(--pouce-lh)" />
-                    Main gauche (portée du bas)
+                    Main gauche
                 </span>
+                {settings.tempo && (
+                    <span>Suggestion à ♩ = {settings.tempo}</span>
+                )}
                 {count > 0 && (
                     <span>
                         {plural(count, 'doigté')}
@@ -312,32 +495,38 @@ const EditorPage = () => {
                             `, dont ${autoCount} suggéré${autoCount > 1 ? 's' : ''} (en clair)`}
                     </span>
                 )}
-                <Group gap={8} ml="auto">
-                    {autoCount > 0 && (
-                        <UnstyledButton
-                            c="dimmed"
-                            td="underline"
-                            py={6}
-                            onClick={clearAuto}
-                        >
-                            Retirer les suggestions
-                        </UnstyledButton>
-                    )}
-                    <Button onClick={suggest}>Suggérer les doigtés</Button>
-                </Group>
             </Group>
 
             <ScoreView
                 xml={piece.data.xml}
                 notes={index.notes}
+                handOf={handOf}
                 annotations={annotations}
                 selected={selected}
                 zoom={zoom}
-                onSelect={setSelected}
+                onSelect={select}
                 onLayout={setPositions}
             />
 
             <FingerDock hand={hand} hint={hint} onPick={assign} />
+
+            <SuggestSettings
+                opened={settingsOpen}
+                onClose={settingsModal.close}
+                settings={settings}
+                onChange={setSettings}
+                staves={staves}
+                partNames={parsed.partNames}
+                scoreTempo={index.tempo}
+            />
+            <PieceInfo
+                opened={infoOpen}
+                onClose={infoModal.close}
+                piece={piece.data}
+                source={source}
+                id={id}
+                index={index}
+            />
         </Box>
     );
 };

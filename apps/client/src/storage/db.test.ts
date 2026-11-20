@@ -6,12 +6,35 @@ import {
     closeDb,
     countAnnotations,
     deleteImport,
+    forgetLibraryPiece,
     getAnnotations,
     getImport,
+    getLibraryPiece,
+    getSettings,
+    keepLibraryPiece,
     listImports,
+    listLibrary,
     pieceKey,
     saveAnnotations,
+    saveSettings,
 } from './db';
+
+const libraryPiece = (id: string) => ({
+    id,
+    title: `Titre ${id}`,
+    composer: 'Chopin',
+    arranger: '',
+    level: 'Facile' as const,
+    difficulty: 3,
+    tags: '',
+    source: 'pdmx',
+    license: 'CC0',
+    licenseUrl: null,
+    sourceUrl: null,
+    duration: 60,
+    measures: 16,
+    xml: `<score id="${id}"/>`,
+});
 
 beforeEach(() => {
     // Base vide pour chaque test.
@@ -49,5 +72,35 @@ describe('stockage local', () => {
         await deleteImport(p.id);
         expect(await listImports()).toEqual([]);
         expect(await getAnnotations(pieceKey('import', p.id))).toBeUndefined();
+    });
+
+    it('garde les partitions du catalogue ouvertes, pour le hors-ligne', async () => {
+        await keepLibraryPiece(libraryPiece('a'));
+        await new Promise((r) => setTimeout(r, 5));
+        await keepLibraryPiece(libraryPiece('b'));
+        expect((await listLibrary()).map((p) => p.id)).toEqual(['b', 'a']);
+        expect((await getLibraryPiece('a'))?.xml).toBe('<score id="a"/>');
+        await saveAnnotations(pieceKey('catalogue', 'a'), {
+            f: { k: 2 },
+            auto: {},
+        });
+        await forgetLibraryPiece('a');
+        expect((await listLibrary()).map((p) => p.id)).toEqual(['b']);
+        expect(
+            await getAnnotations(pieceKey('catalogue', 'a')),
+        ).toBeUndefined();
+    });
+
+    it('garde les réglages de la suggestion par partition', async () => {
+        const piece = pieceKey('import', 'x');
+        expect(await getSettings(piece)).toEqual({
+            hands: undefined,
+            tempo: undefined,
+        });
+        await saveSettings(piece, { tempo: 72, hands: { '0|2': 0 } });
+        expect(await getSettings(piece)).toEqual({
+            tempo: 72,
+            hands: { '0|2': 0 },
+        });
     });
 });
