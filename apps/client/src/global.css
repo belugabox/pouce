@@ -1,0 +1,85 @@
+/*
+ * Couleurs propres à Pouce, en plus de celles de Mantine : mains droite et
+ * gauche, sélection, touches du clavier de saisie. La partition reste
+ * toujours sur fond blanc (`--pouce-paper`).
+ */
+:root {
+    --pouce-rh: #1f5fbf;
+    --pouce-lh: #b0306a;
+    --pouce-sel: #f2b705;
+    --pouce-paper: #ffffff;
+    --pouce-key: #ffffff;
+    --pouce-key-ink: #18202e;
+    --pouce-black: #1b2230;
+}
+
+[data-mantine-color-scheme='dark'] {
+    --pouce-rh: #6d9eea;
+    --pouce-lh: #e07aa8;
+    --pouce-key: #e9eef5;
+    --pouce-key-ink: #121821;
+    --pouce-black: #05080d;
+}
+
+body {
+    min-height: 100dvh;
+}
+
+h1,
+h2,
+h3 {
+    font-family:
+        'Bricolage Grotesque', 'Atkinson Hyperlegible', system-ui, sans-serif;
+}
+
+/* Clavier de saisie : touches de piano, chiffres de la couleur de la main. */
+.pouce-key {
+    height: 62px;
+    border-radius: 4px 4px 12px 12px;
+    border: 1px solid var(--mantine-color-default-border);
+    background: var(--pouce-key);
+    color: var(--pouce-key-ink);
+    font:
+        700 1.5rem 'Bricolage Grotesque',
+        sans-serif;
+    box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    transition: transform 0.08s;
+}
+.pouce-key:active:not(:disabled) {
+    transform: translateY(2px);
+}
+.pouce-key:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.pouce-key:focus-visible {
+    outline: 3px solid var(--pouce-rh);
+    outline-offset: 2px;
+}
+.pouce-key.erase {
+    background: var(--pouce-black);
+    border-color: var(--pouce-black);
+    color: #fff;
+    font-size: 0.95rem;
+}
+[data-hand='rh'] .pouce-key:not(.erase) {
+    color: var(--pouce-rh);
+}
+[data-hand='lh'] .pouce-key:not(.erase) {
+    color: var(--pouce-lh);
+}
+
+#score {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+#score svg {
+    display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition: none !important;
+    }
+}

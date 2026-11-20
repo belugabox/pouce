@@ -1,0 +1,62 @@
+import { handOf } from '@/core/fingering/suggest';
+import type { ScoreNote } from '@/core/musicxml';
+
+/** Clés des notes de chaque main (1 : droite, 2 : gauche), dans l'ordre de saisie. */
+export type NoteOrder = Record<1 | 2, string[]>;
+
+/**
+ * Ordre de saisie : mesure, attaque, puis dans un accord de l'aigu vers le
+ * grave à la main droite, du grave vers l'aigu à la main gauche. Seules les
+ * notes dessinées (`shown`) comptent.
+ */
+export const buildOrder = (
+    notes: ScoreNote[],
+    shown: (key: string) => boolean,
+): NoteOrder => {
+    const order: NoteOrder = { 1: [], 2: [] };
+    for (const hand of [1, 2] as const) {
+        order[hand] = notes
+            .filter((n) => handOf(n.staff) === hand && shown(n.key))
+            .sort(
+                (a, b) =>
+                    a.measure - b.measure ||
+                    a.onset - b.onset ||
+                    (hand === 1 ? b.rank - a.rank : a.rank - b.rank),
+            )
+            .map((n) => n.key);
+    }
+    return order;
+};
+
+/** Note suivante (ou précédente) de la même main ; null au bout. */
+export const step = (
+    order: NoteOrder,
+    note: ScoreNote,
+    delta: 1 | -1,
+): string | null => {
+    const list = order[handOf(note.staff)];
+    const i = list.indexOf(note.key);
+    return list[i + delta] ?? null;
+};
+
+/** Note la plus proche dans l'autre main (même mesure de préférence). */
+export const otherHand = (
+    order: NoteOrder,
+    note: ScoreNote,
+    x: (key: string) => number,
+    measureOf: (key: string) => number,
+): string | null => {
+    const other = order[handOf(note.staff) === 1 ? 2 : 1];
+    let best: string | null = null;
+    let bestScore = Infinity;
+    for (const key of other) {
+        const score =
+            Math.abs(x(key) - x(note.key)) +
+            Math.abs(measureOf(key) - note.measure) * 100;
+        if (score < bestScore) {
+            bestScore = score;
+            best = key;
+        }
+    }
+    return best;
+};

@@ -1,0 +1,56 @@
+[
+    {
+        "id": "ode",
+        "title": "Ode à la joie",
+        "composer": "Ludwig van Beethoven",
+        "level": "Débutant",
+        "tags": "symphonie 9 hymne europe joie",
+        "source": "pouce",
+        "license": "Domaine public"
+    },
+    {
+        "id": "lune",
+        "title": "Au clair de la lune",
+        "composer": "Traditionnel",
+        "level": "Débutant",
+        "tags": "comptine chanson enfant pierrot",
+        "source": "pouce",
+        "license": "Domaine public"
+    },
+    {
+        "id": "jacques",
+        "title": "Frère Jacques",
+        "composer": "Traditionnel",
+        "level": "Débutant",
+        "tags": "canon comptine dormez-vous",
+        "source": "pouce",
+        "license": "Domaine public"
+    },
+    {
+        "id": "twinkle",
+        "title": "Ah ! vous dirai-je, maman",
+        "composer": "Thème populaire (Mozart, variations K. 265)",
+        "level": "Débutant",
+        "tags": "twinkle little star étoile mozart",
+        "source": "pouce",
+        "license": "Domaine public"
+    },
+    {
+        "id": "menuet",
+        "title": "Menuet en sol majeur",
+        "composer": "Christian Petzold (BWV Anh. 114)",
+        "level": "Facile",
+        "tags": "bach anna magdalena minuet menuet sol",
+        "source": "pouce",
+        "license": "Domaine public"
+    },
+    {
+        "id": "prelude",
+        "title": "Prélude en do majeur (mes. 1–4)",
+        "composer": "Jean-Sébastien Bach (BWV 846, arr. simplifié)",
+        "level": "Intermédiaire",
+        "tags": "clavier bien tempéré prelude arpège",
+        "source": "pouce",
+        "license": "Domaine public"
+    }
+]
