@@ -3,18 +3,22 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { analyze, quickMeta, stripXml } from '../scripts/pdmx/analyze';
+import { analyze, quickMeta } from '../scripts/pdmx/analyze';
 import {
     attribute,
     fixMojibake,
+    looksBroken,
     normalizeName,
 } from '../scripts/pdmx/composers';
+import { genreOf } from '../scripts/pdmx/genre';
 import { mxlToXml } from '../scripts/pdmx/musicxml';
 import {
     type PdmxRow,
+    authorName,
     cleanTitle,
     popularity,
     selectRow,
+    tidyTitle,
 } from '../scripts/pdmx/select';
 
 const catalogXml = (id: string) =>
@@ -177,7 +181,7 @@ describe('select', () => {
         ...extra,
     });
 
-    it('garde le piano seul sous licence libre', () => {
+    it('garde le piano seul, même en conflit de licence', () => {
         const c = selectRow(row());
         expect(c).toMatchObject({
             path: 'mxl/1/11/Qm.mxl',
@@ -189,7 +193,9 @@ describe('select', () => {
             attribution: { composer: 'Claude Debussy', how: 'composer' },
         });
         expect(selectRow(row({ tracks: '0-0' }))).toBe(null);
-        expect(selectRow(row({ license_conflict: 'True' }))).toBe(null);
+        expect(selectRow(row({ license_conflict: 'True' }))?.license).toBe(
+            'CC0',
+        );
         expect(selectRow(row({ license: 'cc-by' }))).toBe(null);
         expect(selectRow(row({ is_best_unique_arrangement: 'False' }))).toBe(
             null,
@@ -207,6 +213,58 @@ describe('select', () => {
         expect(p('0', '0')).toBe(0);
         expect(p('99', '0')).toBe(2);
         expect(p('99', '9')).toBe(4);
+    });
+
+    it('lit l’auteur d’un champ libre', () => {
+        expect(
+            authorName(
+                'Koji KondoArranged by Ron O’DellPerformed by Tom Brier',
+            ),
+        ).toBe('Koji Kondo');
+        expect(authorName('Arranged by Myee89', 'Stray Kids (SKZ)')).toBe(
+            'Stray Kids',
+        );
+        expect(authorName('Composer : Nao’ymt Piano Arr. : X')).toBe('Nao’ymt');
+        expect(authorName('By Takahiro ObataArr: Torby Brand')).toBe(
+            'Takahiro Obata',
+        );
+        expect(authorName('Artist: Ruth B Transcriber : HiddenGrey')).toBe(
+            'Ruth B',
+        );
+        expect(authorName('Orig. Buddy Greene Arr. Ethan Snyder')).toBe(
+            'Buddy Greene',
+        );
+        expect(authorName('Riot Gamesarr. chillOwl')).toBe('Riot Games');
+        expect(authorName('Arr. LoisCovers', 'Lois')).toBe('Lois');
+        expect(authorName('Joseph Barr')).toBe('Joseph Barr');
+        expect(authorName('William Byrd')).toBe('William Byrd');
+        // Champ abîmé (octets perdus) : le suivant.
+        const broken = `Kenshi ${String.fromCharCode(0xe3, 0xe3, 0xbc, 0xe3)}`;
+        expect(looksBroken(broken)).toBe(true);
+        expect(looksBroken('Café crème à Noël')).toBe(false);
+        expect(authorName(broken, 'Kenshi Yonezu')).toBe('Kenshi Yonezu');
+        expect(authorName('NA', '')).toBe('NA');
+        expect(authorName('', undefined)).toBe('');
+        const korean = '스트레이 키즈';
+        const garbled = Buffer.from(korean, 'utf-8').toString('latin1');
+        expect(fixMojibake(`Stray Kids (${garbled})`)).toBe(
+            `Stray Kids (${korean})`,
+        );
+    });
+
+    it('retire les mentions « piano » inutiles du titre', () => {
+        expect(tidyTitle('Over The Rainbow ((Piano))')).toBe(
+            'Over The Rainbow',
+        );
+        expect(tidyTitle('Part I (Piano solo)')).toBe('Part I');
+        expect(tidyTitle('Toad’s Factory - Piano Cover')).toBe(
+            'Toad’s Factory',
+        );
+        expect(tidyTitle('Douce nuit. piano facile')).toBe('Douce nuit');
+        expect(tidyTitle('Faded Easy Piano Version')).toBe('Faded');
+        expect(tidyTitle('Sonata for Piano')).toBe('Sonata for Piano');
+        expect(tidyTitle('Grieg Piano Concerto')).toBe('Grieg Piano Concerto');
+        expect(tidyTitle('(Piano)')).toBe('(Piano)');
     });
 
     it('retire le compositeur du titre', () => {
@@ -245,12 +303,6 @@ describe('analyze', () => {
         expect(analyze('pas du xml')).toBe('illisible');
     });
 
-    it('retire les paroles et les mentions de droits', () => {
-        const xml =
-            '<note><lyric number="1"><text>la</text></lyric></note><rights>© 2020</rights>';
-        expect(stripXml(xml)).toBe('<note></note>');
-    });
-
     it('lit le compositeur et le titre sans DOM', () => {
         expect(
             quickMeta(
@@ -268,5 +320,66 @@ describe('analyze', () => {
         });
         expect(mxlToXml(zip)).toBe('<score-partwise/>');
         expect(mxlToXml(strToU8('pas un zip'))).toBe(null);
+    });
+});
+
+describe('genreOf', () => {
+    it('lit le genre déclaré, puis les mots-clés, puis le compositeur', () => {
+        expect(genreOf('classical-soundtrack', '', null)).toBe(
+            'Films et séries',
+        );
+        expect(genreOf('rock-pop', '', null)).toBe('Pop et rock');
+        expect(genreOf('classical', 'classical easyboogiewoogie', null)).toBe(
+            'Jazz',
+        );
+        expect(genreOf('classical', 'classical', null)).toBe('Classique');
+        expect(genreOf('', 'zelda ocarina', null)).toBe('Jeux vidéo');
+        expect(genreOf('', 'hymn-catholic-mary', null)).toBe('Religieux');
+        expect(genreOf('', '', 'composer')).toBe('Classique');
+        expect(genreOf('', '', 'traditional')).toBe('Traditionnel');
+        expect(genreOf('', '', null)).toBe('Autres');
+    });
+
+    it('sépare les films et séries des jeux vidéo', () => {
+        // Bande originale déclarée : jeu d'après les mots-clés ou le titre.
+        expect(genreOf('soundtrack', 'videogame', null)).toBe('Jeux vidéo');
+        expect(genreOf('soundtrack', '', null, 'Megalovania Toby Fox')).toBe(
+            'Jeux vidéo',
+        );
+        expect(
+            genreOf(
+                'soundtrack',
+                'anime',
+                null,
+                'Merry-Go-Round of Life Joe Hisaishi',
+            ),
+        ).toBe('Films et séries');
+        // Sans genre déclaré.
+        expect(genreOf('', 'ghibli', null)).toBe('Films et séries');
+        expect(genreOf('', 'disney movie', null)).toBe('Films et séries');
+        expect(genreOf('', '', null, 'Song of Storms Koji Kondo')).toBe(
+            'Jeux vidéo',
+        );
+        expect(genreOf('classical', '', 'composer', 'Tetris Theme A')).toBe(
+            'Jeux vidéo',
+        );
+        // Mots-clés collés.
+        expect(genreOf('soundtrack', 'byleth fireemblem', null)).toBe(
+            'Jeux vidéo',
+        );
+        // Un mot courant ne suffit pas.
+        expect(genreOf('', '', 'composer', 'Game of Thrones')).toBe(
+            'Classique',
+        );
+        expect(
+            genreOf('', '', null, 'Danse des marionnettes Mario Tarenghi'),
+        ).toBe('Autres');
+        expect(
+            genreOf('classical', 'rachmaninoff moment musical', 'composer'),
+        ).toBe('Classique');
+        expect(genreOf('', '', null, 'Himno lugares celestes')).toBe('Autres');
+        expect(genreOf('', 'supermariogalaxy wii', null)).toBe('Jeux vidéo');
+        // Genre déclaré plus précis : gardé.
+        expect(genreOf('jazz', 'zelda', null)).toBe('Jazz');
     });
 });

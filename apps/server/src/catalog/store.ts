@@ -3,7 +3,7 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 
 import type { Db } from '../db';
 import { meta, scores } from '../db/schema';
-import type { Level } from '../types';
+import type { Genre, Level } from '../types';
 import type { IndexedEntry } from './search';
 
 /** MusicXML compressé pour la base. */
@@ -27,6 +27,7 @@ export const entryColumns = {
     sourceUrl: scores.sourceUrl,
     duration: scores.duration,
     measures: scores.measures,
+    genre: scores.genre,
     popularity: scores.popularity,
 };
 
@@ -38,7 +39,11 @@ export const visibleEntries = (db: Db): IndexedEntry[] =>
         .where(eq(scores.hidden, false))
         .orderBy(sql`rowid`)
         .all()
-        .map((row) => ({ ...row, level: row.level as Level | null }));
+        .map((row) => ({
+            ...row,
+            level: row.level as Level | null,
+            genre: row.genre as Genre | null,
+        }));
 
 export const getMeta = (db: Db, key: string) =>
     db.select().from(meta).where(eq(meta.key, key)).get()?.value ?? null;

@@ -17,9 +17,9 @@ export const AboutModal = ({
     <Modal opened={opened} onClose={onClose} title="À propos de Pouce" centered>
         <Stack gap="md" fz="sm">
             <Text fz="sm">
-                Pouce t’aide à trouver une partition de piano libre de droits et
-                à y noter tes doigtés, avec une suggestion automatique qui
-                cherche l’enchaînement de doigts le moins fatigant.
+                Pouce t’aide à trouver une partition de piano et à y noter tes
+                doigtés, avec une suggestion automatique qui cherche
+                l’enchaînement de doigts le moins fatigant.
             </Text>
             <div>
                 <Title order={3} fz="md" mb={4}>
@@ -27,21 +27,19 @@ export const AboutModal = ({
                 </Title>
                 <List spacing={4} fz="sm">
                     <List.Item>
-                        Uniquement des œuvres du domaine public (compositeur
-                        mort depuis plus de 70 ans) ou traditionnelles, dans des
-                        versions publiées en CC0 ou dans le domaine public.
-                    </List.Item>
-                    <List.Item>
                         La plupart viennent de{' '}
                         <Link href="https://zenodo.org/records/15571083">
                             PDMX
                         </Link>{' '}
                         (Long et al., 2024, licence CC BY 4.0), un recueil de
-                        partitions déposées sur MuseScore par leurs auteurs.
+                        partitions déposées sur MuseScore par leurs auteurs :
+                        toutes les partitions de piano à deux mains qu’il
+                        contient, sans tri sur les droits. Pouce est un projet
+                        personnel et expérimental.
                     </List.Item>
                     <List.Item>
-                        Une partition te semble protégée ou fausse ? Ouvre sa
-                        fiche et signale-la : elle sera vérifiée.
+                        Une partition fausse ou illisible ? Ouvre sa fiche et
+                        signale-la : elle sera vérifiée.
                     </List.Item>
                 </List>
             </div>
@@ -57,7 +55,11 @@ export const AboutModal = ({
                 </Text>
             </div>
             <Text fz="xs" c="dimmed">
-                Rendu des partitions :{' '}
+                Sons de piano :{' '}
+                <Link href="https://archive.org/details/SalamanderGrandPianoV3">
+                    Salamander Grand Piano
+                </Link>
+                , Alexander Holm (CC BY 3.0), extraits. Rendu des partitions :{' '}
                 <Link href="https://opensheetmusicdisplay.org/">
                     OpenSheetMusicDisplay
                 </Link>{' '}

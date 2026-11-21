@@ -65,6 +65,9 @@ const main = async () => {
             '/*',
             serveStatic({ root: path.relative(process.cwd(), CLIENT_DIST) }),
         )
+        // Fichier de Vite absent (onglet d'une ancienne version) : une vraie
+        // erreur, pas la page d'accueil gardée un an sous le nom d'un script.
+        .get('/assets/*', (c) => c.notFound())
         .get('*', (c) =>
             c.html(readFileSync(path.join(CLIENT_DIST, 'index.html'), 'utf-8')),
         );

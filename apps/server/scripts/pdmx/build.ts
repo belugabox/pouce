@@ -24,9 +24,16 @@ import { extract } from 'tar-stream';
 
 import type { PackEntry } from '../../src/catalog/pack';
 import { type Analysis, analyze, quickMeta } from './analyze';
-import { attribute, normalizeName } from './composers';
+import { attribute, looksBroken, normalizeName } from './composers';
+import { genreOf } from './genre';
 import { mxlToXml } from './musicxml';
-import { type Candidate, type PdmxRow, cleanTitle, selectRow } from './select';
+import {
+    type Candidate,
+    type PdmxRow,
+    authorName,
+    cleanTitle,
+    selectRow,
+} from './select';
 
 const ZENODO = 'https://zenodo.org/api/records/15571083/files';
 
@@ -62,15 +69,15 @@ const readCandidates = async () => {
         const c = selectRow(row);
         if (c) candidates.set(c.path, c);
     }
-    log(
-        `${rows} lignes, ${candidates.size} candidates (piano seul, CC-0 ou domaine public)`,
-    );
+    log(`${rows} lignes, ${candidates.size} candidates (piano seul)`);
     return candidates;
 };
 
 interface Kept {
     candidate: Candidate;
-    analysis: Analysis;
+    /** Sans le XML, gardé compressé à part (sinon la mémoire déborde). */
+    analysis: Omit<Analysis, 'xml'>;
+    xmlGz: string;
     composer: string;
     how: string;
     title: string;
@@ -113,10 +120,11 @@ const main = async () => {
     const handle = (candidate: Candidate, data: Buffer): void => {
         const raw = mxlToXml(data);
         if (!raw) return count('illisible');
-        // Œuvre reconnue d'après le CSV, sinon d'après le compositeur du XML.
+        // Compositeur reconnu d'après le CSV, sinon d'après le XML ; à
+        // défaut, le nom tel qu'il est écrit.
+        const meta = quickMeta(raw);
         let attribution = candidate.attribution;
         if (!attribution) {
-            const meta = quickMeta(raw);
             attribution = attribute(
                 { ...candidate.authors, creator: meta.creator },
                 meta.workTitle && !candidate.title.includes(meta.workTitle)
@@ -125,27 +133,41 @@ const main = async () => {
                 candidate.genres,
             );
         }
-        if (!attribution) return count('auteur-non-reconnu');
+        const composer =
+            attribution?.composer ??
+            authorName(
+                candidate.authors.composer,
+                candidate.authors.artist,
+                meta.creator,
+            );
+        const how = attribution?.how ?? 'non';
         const result = analyze(raw);
         if (typeof result === 'string') return count(result);
-        count(`retenue:${attribution.how}`);
+        count(`retenue:${how}`);
         const title = cleanTitle(
-            candidate.title.includes(String.fromCharCode(0xfffd))
-                ? result.workTitle || candidate.title
+            // Titre abîmé dans le CSV : celui du MusicXML, s'il est lisible.
+            looksBroken(candidate.title) &&
+                result.workTitle &&
+                !looksBroken(result.workTitle)
+                ? result.workTitle
                 : candidate.title,
-            attribution.composer,
+            composer,
         );
         // Doublons (même titre, même auteur) : la plus populaire.
-        const key = `${normalizeName(title)}|${attribution.composer}`;
+        const key = `${normalizeName(title)}|${normalizeName(composer)}`;
         const prev = kept.get(key);
         if (prev && prev.candidate.popularity >= candidate.popularity)
             return count('doublon');
         if (prev) count('doublon');
+        const { xml, ...analysis } = result;
         kept.set(key, {
             candidate,
-            analysis: result,
-            composer: attribution.composer,
-            how: attribution.how,
+            analysis,
+            xmlGz: gzipSync(Buffer.from(xml, 'utf-8'), { level: 9 }).toString(
+                'base64',
+            ),
+            composer,
+            how,
             title,
         });
         if (kept.size % 500 === 0) log(`${kept.size} partitions retenues`);
@@ -168,7 +190,14 @@ const main = async () => {
     const sorted = [...kept.values()].sort(
         (a, b) => b.candidate.popularity - a.candidate.popularity,
     );
-    for (const { candidate: c, analysis: a, composer, how, title } of sorted) {
+    for (const {
+        candidate: c,
+        analysis: a,
+        xmlGz,
+        composer,
+        how,
+        title,
+    } of sorted) {
         const entry: PackEntry = {
             id: c.id,
             title,
@@ -183,9 +212,13 @@ const main = async () => {
             popularity: c.popularity,
             duration: a.duration,
             measures: a.measures,
-            xmlGz: gzipSync(Buffer.from(a.xml, 'utf-8'), { level: 9 }).toString(
-                'base64',
+            genre: genreOf(
+                c.genres,
+                c.tags,
+                how === 'non' ? null : how,
+                `${title} ${composer}`,
             ),
+            xmlGz,
         };
         gz.write(JSON.stringify(entry) + '\n');
         report.write(

@@ -420,7 +420,7 @@ const REPLACEMENT = String.fromCharCode(0xfffd);
 
 /** Répare un texte UTF-8 relu en Latin-1 (« DvoÅák » → « Dvořák »). */
 export const fixMojibake = (text: string) => {
-    if (!/[ÃÅÄÐÑÂ][\x80-\xbf]/.test(text)) return text;
+    if (!/[\xc2-\xf4][\x80-\xbf]/.test(text)) return text;
     try {
         const fixed = Buffer.from(text, 'latin1').toString('utf-8');
         return fixed.includes(REPLACEMENT) ? text : fixed;
@@ -428,6 +428,14 @@ export const fixMojibake = (text: string) => {
         return text;
     }
 };
+
+/**
+ * Texte abîmé de façon irréparable : UTF-8 relu en Latin-1 dont des octets
+ * se sont perdus (« Rolling Girl(ãã¼ãªã³ãã¼ã) », dans le CSV de PDMX).
+ */
+export const looksBroken = (text: string) =>
+    text.includes(REPLACEMENT) ||
+    (text.match(/[\xc2-\xf4](?=[\x80-\xbf\xc2-\xf4])/g)?.length ?? 0) >= 2;
 
 const has = (haystack: string, needle: string) =>
     haystack.includes(` ${needle} `);

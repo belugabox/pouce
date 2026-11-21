@@ -24,6 +24,18 @@ export default tseslint.config(
                 { allowConstantExport: true },
             ],
             '@typescript-eslint/no-unused-vars': ['warn'],
+            // `useEffect(() => appel())` : ce que renvoie l'appel devient le
+            // nettoyage de l'effet. Edge 158 fait renvoyer une promesse à
+            // `scrollTo`, et React plantait en quittant l'éditeur.
+            'no-restricted-syntax': [
+                'error',
+                {
+                    selector:
+                        "CallExpression[callee.name=/^use(Layout)?Effect$/] > ArrowFunctionExpression[body.type!='BlockStatement'][body.type!='ArrowFunctionExpression']",
+                    message:
+                        'Corps d’effet entre accolades : la valeur renvoyée servirait de nettoyage.',
+                },
+            ],
         },
     },
 );

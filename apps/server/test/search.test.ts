@@ -26,6 +26,7 @@ const entry = (
     sourceUrl: null,
     duration: 60,
     measures: 16,
+    genre: 'Classique',
     popularity: 1,
     ...extra,
 });
@@ -81,10 +82,10 @@ describe('editDistance', () => {
 });
 
 describe('CatalogIndex', () => {
-    it('met le catalogue intégré en tête, puis le plus populaire', () => {
+    it('classe le catalogue intégré parmi les plus populaires', () => {
         expect(ids('')).toEqual([
-            'ode',
             'elise',
+            'ode',
             'nocturne',
             'gymno',
             'valse',
@@ -110,6 +111,88 @@ describe('CatalogIndex', () => {
     it('exige tous les mots, sauf les petits mots', () => {
         expect(ids('nocturne satie')).toEqual([]);
         expect(ids('la gymnopédie de satie')).toEqual(['gymno']);
+    });
+
+    it('comprend les mots de niveau, sans les exiger', () => {
+        expect(ids('beethoven facile')).toEqual(['ode']);
+        expect(ids('chopin facile')).toEqual(['valse']);
+        expect(ids('satie facile')).toEqual(['gymno']);
+        expect(ids('nocturne difficile')).toEqual(['nocturne']);
+        expect(ids('facile', { limit: 3 })).toEqual(['ode', 'gymno', 'valse']);
+    });
+
+    it('cherche dans toutes les écritures', () => {
+        const other = new CatalogIndex([
+            entry('kpop', 'Story That Won’t End (어디에도)', 'Stray Kids'),
+            entry('anime', 'ブルーバード', 'Ikimonogakari'),
+            entry('coeur', 'Mon cœur s’ouvre à ta voix', 'Camille Saint-Saëns'),
+        ]);
+        const find = (q: string) => other.search({ q }).items.map((e) => e.id);
+        expect(find('어디에도')).toEqual(['kpop']);
+        expect(find('ブルーバード')).toEqual(['anime']);
+        expect(find('coeur')).toEqual(['coeur']);
+        expect(find('saens')).toEqual(['coeur']);
+    });
+
+    it('regroupe les versions d’un même morceau', () => {
+        const versions = new CatalogIndex([
+            entry('e1', 'Für Elise', 'Ludwig van Beethoven', {
+                popularity: 9,
+                difficulty: 4.6,
+            }),
+            entry('e2', 'Fur Elise (Easy Piano Version)', 'L. v. Beethoven', {
+                popularity: 3,
+                difficulty: 1.5,
+                level: 'Débutant',
+            }),
+            entry('e3', 'Für Elise - Beethoven', 'Beethoven', {
+                popularity: 5,
+                difficulty: 3,
+            }),
+            entry('w1', 'Waltz', '', { popularity: 2 }),
+            entry('w2', 'Waltz', '', { popularity: 1 }),
+            entry('s1', 'Sonata for Piano', 'Haydn', { popularity: 4 }),
+        ]);
+        const page = versions.search({ q: 'elise' });
+        expect(page.total).toBe(1);
+        expect(page.items.map((e) => [e.id, e.versions])).toEqual([['e1', 3]]);
+        const group = page.items[0]!.group;
+        expect(versions.search({ group }).items.map((e) => e.id)).toEqual([
+            'e2',
+            'e3',
+            'e1',
+        ]);
+        // Sans compositeur, pas de regroupement ; « piano » seul reste.
+        expect(versions.search({ q: 'waltz' }).total).toBe(2);
+        expect(versions.search({ q: 'sonata' }).items[0]!.versions).toBe(1);
+        // Le niveau filtre les versions : la plus facile représente le morceau.
+        expect(
+            versions
+                .search({ q: 'elise', level: 'Débutant' })
+                .items.map((e) => [e.id, e.versions]),
+        ).toEqual([['e2', 1]]);
+    });
+
+    it('filtre par genre et compte les morceaux par genre', () => {
+        const mixed = new CatalogIndex([
+            entry('a', 'Prelude', 'Bach'),
+            entry('b', 'Zelda Theme', 'Koji Kondo', { genre: 'Jeux vidéo' }),
+            entry('c', 'Song of Storms', 'Koji Kondo', {
+                genre: 'Jeux vidéo',
+                level: 'Avancé',
+            }),
+            entry('d', 'Untitled', 'X', { genre: null }),
+        ]);
+        const page = mixed.search({ genre: 'Jeux vidéo' });
+        expect(page.items.map((e) => e.id).sort()).toEqual(['b', 'c']);
+        expect(page.genres).toMatchObject({
+            Classique: 1,
+            'Jeux vidéo': 2,
+            Autres: 1,
+        });
+        expect(page.levels).toMatchObject({ Facile: 1, Avancé: 1 });
+        expect(mixed.search({ genre: 'Autres' }).items[0]!.id).toBe('d');
+        expect(mixed.search({ level: 'Avancé' }).genres['Jeux vidéo']).toBe(1);
     });
 
     it('cherche aussi dans les mots-clés', () => {

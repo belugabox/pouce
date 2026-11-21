@@ -21,8 +21,12 @@ import {
     IconDownload,
     IconInfoCircle,
     IconMinus,
+    IconPlayerPlay,
+    IconPlayerStop,
     IconPlus,
     IconPrinter,
+    IconStar,
+    IconStarFilled,
 } from '@tabler/icons-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
@@ -36,12 +40,14 @@ import {
     suggestAll,
 } from '@/core/fingering/suggest';
 import { indexScore, parseXml, readPartNames } from '@/core/musicxml';
+import { playNotes } from '@/core/playback';
 import { FingerDock } from '@/editor/FingerDock';
 import { PieceInfo, type PieceMeta } from '@/editor/PieceInfo';
 import { ScoreView } from '@/editor/ScoreView';
 import { SuggestSettings } from '@/editor/SuggestSettings';
 import { buildOrder, handIn, otherHand, step } from '@/editor/navigation';
 import type { Positions } from '@/editor/osmd';
+import { Player } from '@/editor/player';
 import { useAnnotations, usePieceSettings } from '@/editor/useAnnotations';
 import { fetchScore } from '@/services/api';
 import { useQuery } from '@/services/useQuery';
@@ -49,8 +55,10 @@ import {
     type PieceSource,
     getImport,
     getLibraryPiece,
+    isFavorite,
     keepLibraryPiece,
     pieceKey,
+    setFavorite,
 } from '@/storage/db';
 
 const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
@@ -164,7 +172,9 @@ const EditorPage = () => {
     const selectedNote = selected ? index?.byKey.get(selected) : undefined;
     const selectedHand = selected ? handIn(order, selected) : null;
 
-    useEffect(() => window.scrollTo(0, 0), [source, id]);
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, [source, id]);
     useEffect(() => {
         if (piece.data?.title) document.title = `${piece.data.title} — Pouce`;
         return () => {
@@ -185,6 +195,56 @@ const EditorPage = () => {
     };
 
     const tempo = settings.tempo ?? index?.tempo ?? 100;
+
+    const favorite = useQuery(() => isFavorite(key), [key]);
+    const toggleFavorite = async () => {
+        if (!piece.data) return;
+        const on = !favorite.data;
+        try {
+            await setFavorite({ ...piece.data, source, id }, on);
+            notifications.show({
+                message: on ? 'Ajoutée aux favoris' : 'Retirée des favoris',
+            });
+        } catch (err) {
+            notifications.show({
+                color: 'red',
+                message: (err as Error).message,
+            });
+        }
+        favorite.reload();
+    };
+
+    // Écoute : depuis la note sélectionnée, au tempo de la suggestion ; la
+    // sélection suit la main droite.
+    const player = useMemo(() => new Player(), []);
+    const [playing, setPlaying] = useState(false);
+    useEffect(() => {
+        setPlaying(false);
+        return () => player.stop();
+    }, [player, source, id]);
+    const togglePlay = () => {
+        if (!index) return;
+        // L'état de l'écran, pas celui du lecteur : il peut encore charger
+        // ses sons.
+        if (playing) {
+            player.stop();
+            setPlaying(false);
+            return;
+        }
+        const notes = playNotes(index.notes, {
+            from: selectedNote?.t ?? 0,
+            factor: tempo / index.tempo,
+        });
+        const rightHand = order[1].length > 0;
+        setPlaying(true);
+        void player.play(notes, {
+            onNote: (n) => {
+                const h = handIn(order, n.key);
+                if (h === 1 || (h && !rightHand)) setSelected(n.key);
+            },
+            onEnd: () => setPlaying(false),
+        });
+    };
 
     const suggest = () => {
         if (!index || !annotations) return;
@@ -244,7 +304,11 @@ const EditorPage = () => {
                 return;
             }
             if (e.ctrlKey || e.metaKey || e.altKey) return;
-            if (/^[1-5]$/.test(e.key)) {
+            if (e.key === ' ') {
+                // Un bouton qui a le focus réagit déjà à la barre d'espace.
+                if (target?.closest('button')) return;
+                togglePlay();
+            } else if (/^[1-5]$/.test(e.key)) {
                 assign(Number(e.key));
             } else if (['Backspace', 'Delete', '0'].includes(e.key)) {
                 assign(0);
@@ -345,6 +409,27 @@ const EditorPage = () => {
                             {piece.data.offline && ' — copie sur l’appareil'}
                         </Text>
                     </UnstyledButton>
+                    <ActionIcon
+                        variant="default"
+                        size={44}
+                        color={favorite.data ? 'yellow' : undefined}
+                        aria-pressed={!!favorite.data}
+                        aria-label={
+                            favorite.data
+                                ? 'Retirer des favoris'
+                                : 'Ajouter aux favoris'
+                        }
+                        onClick={toggleFavorite}
+                    >
+                        {favorite.data ? (
+                            <IconStarFilled
+                                size={20}
+                                color="var(--mantine-color-yellow-6)"
+                            />
+                        ) : (
+                            <IconStar size={20} />
+                        )}
+                    </ActionIcon>
                     <Button
                         variant="default"
                         h={44}
@@ -434,6 +519,23 @@ const EditorPage = () => {
                         disabled={zoom >= ZOOM_MAX}
                     >
                         <IconPlus size={18} />
+                    </ToolIcon>
+                    <Divider orientation="vertical" mx={2} />
+                    <ToolIcon
+                        label={
+                            playing
+                                ? 'Arrêter (espace)'
+                                : selectedNote
+                                  ? 'Écouter depuis la note choisie (espace)'
+                                  : 'Écouter (espace)'
+                        }
+                        onClick={togglePlay}
+                    >
+                        {playing ? (
+                            <IconPlayerStop size={18} />
+                        ) : (
+                            <IconPlayerPlay size={18} />
+                        )}
                     </ToolIcon>
                 </Group>
                 <Group gap="6px 12px" ml="auto" wrap="wrap" justify="flex-end">

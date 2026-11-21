@@ -6,6 +6,8 @@
 //   OpenSheetMusicDisplay) gardée sur l'appareil : Pouce s'ouvre sans réseau.
 // - Liste du catalogue sans recherche (`/api/catalog`) : le réseau d'abord,
 //   la dernière réponse gardée sinon.
+// - Sons de piano (`/piano/`, Salamander) : gardés à la première écoute,
+//   d'une version de l'application à l'autre.
 // - Partitions ouvertes, importées, doigtés et réglages : dans IndexedDB,
 //   gérés par l'application. Rien à faire ici.
 
@@ -13,7 +15,9 @@ const VERSION = '__VERSION__';
 const ASSETS = __ASSETS__;
 const APP_CACHE = `pouce-app-${VERSION}`;
 // Format des réponses de l'API : changer le nom à chaque changement.
-const API_CACHE = 'pouce-api-2';
+const API_CACHE = 'pouce-api-4';
+// Échantillons de piano : ne changent pas avec l'application.
+const PIANO_CACHE = 'pouce-piano-1';
 // Page ou API : le réseau d'abord, l'appareil s'il ne répond pas assez vite.
 const NETWORK_TIMEOUT_MS = 4000;
 
@@ -95,6 +99,16 @@ const appFile = async (request) => {
     return response;
 };
 
+/** Son de piano : l'appareil d'abord, téléchargé une seule fois. */
+const pianoFile = async (request) => {
+    const cache = await caches.open(PIANO_CACHE);
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    const response = await fetch(request);
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
+};
+
 self.addEventListener('fetch', (event) => {
     const { request } = event;
     if (request.method !== 'GET') return;
@@ -107,9 +121,12 @@ self.addEventListener('fetch', (event) => {
     if (
         url.pathname === '/api/catalog' &&
         !url.searchParams.get('q') &&
-        !url.searchParams.get('offset')
+        !url.searchParams.get('offset') &&
+        !url.searchParams.get('group')
     ) {
         event.respondWith(catalog(request));
+    } else if (url.pathname.startsWith('/piano/')) {
+        event.respondWith(pianoFile(request));
     } else if (url.pathname.startsWith('/api/')) {
         // Réseau seulement.
     } else if (request.mode === 'navigate') {

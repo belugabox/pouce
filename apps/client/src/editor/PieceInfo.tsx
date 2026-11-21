@@ -13,6 +13,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconFlag } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router';
 
 import {
     type CatalogEntry,
@@ -49,7 +50,7 @@ const Row = ({
 );
 
 const ReportForm = ({ id, onDone }: { id: string; onDone: () => void }) => {
-    const [reason, setReason] = useState<ReportReason>('copyright');
+    const [reason, setReason] = useState<ReportReason>('wrong');
     const [message, setMessage] = useState('');
     const [sending, setSending] = useState(false);
     const [error, setError] = useState('');
@@ -152,7 +153,19 @@ export const PieceInfo = ({
             centered
         >
             <Stack gap="sm">
-                <Row label="Compositeur">{piece.composer || 'Inconnu'}</Row>
+                <Row label="Compositeur">
+                    {source === 'catalogue' && piece.composer ? (
+                        <Anchor
+                            component={Link}
+                            to={`/?q=${encodeURIComponent(piece.composer)}`}
+                            title="Ses autres partitions dans la bibliothèque"
+                        >
+                            {piece.composer}
+                        </Anchor>
+                    ) : (
+                        piece.composer || 'Inconnu'
+                    )}
+                </Row>
                 {piece.arranger && (
                     <Row label="Arrangement">{piece.arranger}</Row>
                 )}

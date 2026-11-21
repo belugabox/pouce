@@ -1,6 +1,9 @@
 import {
     type CatalogEntry,
+    type CatalogHit,
     type CatalogPage,
+    GENRES,
+    type Genre,
     LEVELS,
     type Level,
     type Sort,
@@ -9,7 +12,7 @@ import {
 
 /**
  * Recherche dans le catalogue, en mémoire : quelques dizaines de milliers de
- * partitions au plus, cherchées en quelques millisecondes. Insensible aux
+ * partitions, cherchées en quelques dizaines de millisecondes. Insensible aux
  * accents et aux majuscules, tolérante aux fautes de frappe, avec quelques
  * équivalences français / anglais (valse → waltz…).
  */
@@ -57,7 +60,69 @@ const SYNONYMS: Record<string, string[]> = {
     impromptu: ['impromptus'],
     pathetique: ['pathetic'],
     traditionnel: ['traditional', 'trad'],
+    facile: ['easy', 'simple', 'simplified', 'beginner'],
+    debutant: ['beginner', 'easy', 'simple'],
+    easy: ['facile', 'simple', 'simplified'],
+    beginner: ['debutant', 'easy'],
+    intermediaire: ['intermediate'],
+    avance: ['advanced'],
+    difficile: ['advanced', 'hard', 'difficult'],
 };
+
+/**
+ * Mots qui désignent un niveau : facultatifs, ils favorisent les partitions
+ * de ce niveau (« valse facile » : les valses faciles, sinon toutes).
+ */
+const LEVEL_WORDS: Record<string, Level[]> = {
+    facile: ['Débutant', 'Facile'],
+    easy: ['Débutant', 'Facile'],
+    simple: ['Débutant', 'Facile'],
+    debutant: ['Débutant'],
+    beginner: ['Débutant'],
+    intermediaire: ['Intermédiaire'],
+    intermediate: ['Intermédiaire'],
+    avance: ['Avancé'],
+    advanced: ['Avancé'],
+    difficile: ['Avancé'],
+    hard: ['Avancé'],
+};
+
+/**
+ * Mots qui distinguent les versions d'un même morceau sans en changer
+ * l'œuvre (« Für Elise (Easy Piano Version) » = « Für Elise »).
+ */
+const VERSION_WORDS = new Set(
+    'easy easier very super simple simplified beginner beginners facile tres debutant intermediate intermediaire advanced avance hard difficult difficile piano solo version ver cover arrangement arr arranged for pour short full tutorial sheet music my of the a'.split(
+        ' ',
+    ),
+);
+
+/**
+ * Clé d'un morceau : titre sans mots de version ni nom du compositeur, et
+ * nom de famille du compositeur. Sans compositeur, pas de regroupement
+ * (« Waltz » d'auteurs inconnus).
+ */
+export const workKey = (
+    entry: Pick<CatalogEntry, 'id' | 'title' | 'composer'>,
+) => {
+    const composer = tokenize(entry.composer).filter(
+        (w) => !VERSION_WORDS.has(w),
+    );
+    const name = new Set(composer);
+    const title = tokenize(entry.title).filter(
+        (w) => !VERSION_WORDS.has(w) && !name.has(w),
+    );
+    if (!composer.length || !title.length) return entry.id;
+    return `${title.join(' ')}|${composer.at(-1)}`;
+};
+
+/** Un mot cherché, avec ses équivalences. */
+interface QueryWord {
+    variants: string[];
+    /** Facultatif : petit mot ou niveau. */
+    optional: boolean;
+    levels?: Level[];
+}
 
 /** Expressions françaises traduites avant la recherche. */
 const PHRASES: [RegExp, string][] = [
@@ -71,7 +136,8 @@ const PHRASES: [RegExp, string][] = [
 /** Mots d'un texte, sans accents ni ponctuation. */
 export const tokenize = (text: string) =>
     normalizeSearch(text)
-        .replace(/[^a-z0-9]+/g, ' ')
+        // Toutes les écritures (titres japonais, coréens…), pas seulement le latin.
+        .replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ')
         .trim()
         .split(' ')
         .filter(Boolean);
@@ -134,7 +200,8 @@ export const wordScore = (query: string, word: string): number => {
 };
 
 interface Field {
-    words: string[];
+    /** Mots du champ, par leur numéro dans le vocabulaire de l'index. */
+    words: Int32Array;
     weight: number;
 }
 
@@ -144,23 +211,37 @@ interface Doc {
     /** Popularité ramenée entre 0 et 1. */
     pop: number;
     order: number;
+    /** Morceau (`workKey`) : ses versions sont regroupées. */
+    group: string;
 }
 
 export interface SearchParams {
     q?: string;
     level?: Level;
+    genre?: Genre;
+    /** Toutes les versions d'un morceau, sans regroupement. */
+    group?: string;
     sort?: Sort;
     offset?: number;
     limit?: number;
 }
 
-const emptyLevels = () =>
-    Object.fromEntries(LEVELS.map((l) => [l, 0])) as Record<Level, number>;
+const counts = <K extends string>(keys: readonly K[]) =>
+    Object.fromEntries(keys.map((k) => [k, new Set<string>()])) as Record<
+        K,
+        Set<string>
+    >;
+const sizes = <K extends string>(sets: Record<K, Set<string>>) =>
+    Object.fromEntries(
+        Object.entries<Set<string>>(sets).map(([k, v]) => [k, v.size]),
+    ) as Record<K, number>;
 
 const collator = new Intl.Collator('fr', { sensitivity: 'base' });
 
 export class CatalogIndex {
     private docs: Doc[] = [];
+    /** Mots distincts du catalogue : la ressemblance se calcule une fois par mot. */
+    private vocabulary: string[] = [];
 
     constructor(entries: IndexedEntry[] = []) {
         this.load(entries);
@@ -172,43 +253,83 @@ export class CatalogIndex {
 
     /** Remplace tout le contenu de l'index. */
     load(entries: IndexedEntry[]) {
-        const max = Math.max(1, ...entries.map((e) => e.popularity ?? 0));
+        const known = entries
+            .map((e) => e.popularity)
+            .filter((p): p is number => p !== null)
+            .sort((a, b) => a - b);
+        const max = Math.max(1, known.at(-1) ?? 0);
+        // Catalogue intégré (sans popularité) : des morceaux très connus,
+        // classés parmi le quart le plus populaire.
+        const builtIn = known.length
+            ? known[Math.floor((known.length - 1) * 0.75)]! / max
+            : 0.5;
+        const ids = new Map<string, number>();
+        const field = (text: string, weight: number): Field => ({
+            weight,
+            words: Int32Array.from(tokenize(text), (w) => {
+                let id = ids.get(w);
+                if (id === undefined) {
+                    id = ids.size;
+                    ids.set(w, id);
+                }
+                return id;
+            }),
+        });
         this.docs = entries.map((entry, order) => ({
             entry,
             order,
-            // Catalogue intégré (sans popularité) : choisi, mis en avant.
+            group: workKey(entry),
             pop:
                 entry.popularity === null
-                    ? 1.01
+                    ? builtIn
                     : Math.max(0, entry.popularity) / max,
             fields: [
-                { words: tokenize(entry.title), weight: 1 },
-                { words: tokenize(entry.composer), weight: 0.95 },
-                { words: tokenize(entry.tags), weight: 0.7 },
-                { words: tokenize(entry.arranger), weight: 0.4 },
+                field(entry.title, 1),
+                field(entry.composer, 0.95),
+                field(entry.tags, 0.7),
+                field(entry.arranger, 0.4),
             ],
         }));
+        this.vocabulary = [...ids.keys()];
+    }
+
+    /**
+     * Ressemblance de chaque mot du vocabulaire avec chaque variante des
+     * mots cherchés (un synonyme compte un peu moins que le mot tapé).
+     */
+    private match(words: QueryWord[]): Float32Array[][] {
+        return words.map(({ variants }) =>
+            variants.map((v, i) =>
+                Float32Array.from(
+                    this.vocabulary,
+                    (w) => wordScore(v, w) * (i ? 0.9 : 1),
+                ),
+            ),
+        );
     }
 
     /** Pertinence d'une partition (null : ne correspond pas). */
-    private score(doc: Doc, words: string[][]): number | null {
+    private score(
+        doc: Doc,
+        words: QueryWord[],
+        tables: Float32Array[][],
+    ): number | null {
         let total = 0;
         let missed = 0;
         let required = 0;
-        for (const variants of words) {
-            const stop = STOP_WORDS.has(variants[0]!);
-            if (!stop) required++;
-            let best = 0;
-            for (const field of doc.fields) {
-                for (const word of field.words) {
-                    for (const [i, v] of variants.entries()) {
-                        // Un synonyme compte un peu moins que le mot tapé.
-                        const s = wordScore(v, word) * (i ? 0.9 : 1);
-                        if (s * field.weight > best) best = s * field.weight;
+        for (const [k, { optional, levels }] of words.entries()) {
+            if (!optional) required++;
+            const level = doc.entry.level;
+            let best = level && levels?.includes(level) ? 1 : 0;
+            for (const table of tables[k]!) {
+                for (const field of doc.fields) {
+                    for (const word of field.words) {
+                        const s = table[word]! * field.weight;
+                        if (s > best) best = s;
                     }
                 }
             }
-            if (best === 0 && !stop) missed++;
+            if (best === 0 && !optional) missed++;
             total += best;
         }
         // Une recherche longue peut avoir un mot qui ne se trouve pas.
@@ -220,34 +341,49 @@ export class CatalogIndex {
     search({
         q = '',
         level,
+        genre,
+        group,
         sort,
         offset = 0,
         limit = 30,
     }: SearchParams): CatalogPage {
         let text = normalizeSearch(q);
         for (const [re, by] of PHRASES) text = text.replace(re, by);
-        const words = tokenize(text).map((w) => [w, ...(SYNONYMS[w] ?? [])]);
+        const words = tokenize(text).map((w): QueryWord => ({
+            variants: [w, ...(SYNONYMS[w] ?? [])],
+            optional: STOP_WORDS.has(w) || w in LEVEL_WORDS,
+            levels: LEVEL_WORDS[w],
+        }));
 
+        const tables = this.match(words);
         let scored: { doc: Doc; score: number }[] = [];
         for (const doc of this.docs) {
-            const score = words.length ? this.score(doc, words) : 0;
+            const score = words.length ? this.score(doc, words, tables) : 0;
             if (score !== null) scored.push({ doc, score });
         }
         // Une très bonne correspondance écarte les approximations lointaines
         // (« frere » : Frère Jacques, pas Frédéric Chopin).
-        const top = Math.max(0, ...scored.map((h) => h.score));
+        const top = scored.reduce((m, h) => Math.max(m, h.score), 0);
         if (top >= 0.9) scored = scored.filter((h) => h.score >= top * 0.7);
 
-        const levels = emptyLevels();
-        const hits: { doc: Doc; score: number }[] = [];
+        if (group) scored = scored.filter((h) => h.doc.group === group);
+
+        // Facettes : morceaux par niveau (filtre de genre appliqué) et par
+        // genre (filtre de niveau appliqué).
+        const levels = counts(LEVELS);
+        const genres = counts(GENRES);
+        let hits: { doc: Doc; score: number }[] = [];
         for (const hit of scored) {
-            const entryLevel = hit.doc.entry.level;
-            if (entryLevel) levels[entryLevel]++;
-            if (level && entryLevel !== level) continue;
-            hits.push(hit);
+            const { entry, group: key } = hit.doc;
+            const levelOk = !level || entry.level === level;
+            const genreOk = !genre || (entry.genre ?? 'Autres') === genre;
+            if (genreOk && entry.level) levels[entry.level].add(key);
+            if (levelOk) genres[entry.genre ?? 'Autres'].add(key);
+            if (levelOk && genreOk) hits.push(hit);
         }
 
-        const by = sort ?? (words.length ? 'relevance' : 'popular');
+        const by =
+            sort ?? (group ? 'easy' : words.length ? 'relevance' : 'popular');
         const popular = (a: Doc, b: Doc) => b.pop - a.pop || a.order - b.order;
         hits.sort((a, b) => {
             switch (by) {
@@ -274,12 +410,32 @@ export class CatalogIndex {
             }
         });
 
+        // Une ligne par morceau : la version la mieux classée, et le nombre
+        // de versions (toutes listées quand on demande le morceau).
+        const versions = new Map<string, number>();
+        for (const { doc } of hits) {
+            versions.set(doc.group, (versions.get(doc.group) ?? 0) + 1);
+        }
+        if (!group) {
+            const seen = new Set<string>();
+            hits = hits.filter(({ doc }) => {
+                if (seen.has(doc.group)) return false;
+                seen.add(doc.group);
+                return true;
+            });
+        }
+
         return {
             total: hits.length,
-            levels,
+            levels: sizes(levels),
+            genres: sizes(genres),
             items: hits
                 .slice(offset, offset + limit)
-                .map(({ doc }) => publicEntry(doc.entry)),
+                .map(({ doc }): CatalogHit => ({
+                    ...publicEntry(doc.entry),
+                    group: doc.group,
+                    versions: versions.get(doc.group) ?? 1,
+                })),
         };
     }
 }

@@ -9,7 +9,8 @@
         "license": "Domaine public",
         "difficulty": 1.3,
         "duration": 18,
-        "measures": 8
+        "measures": 8,
+        "genre": "Classique"
     },
     {
         "id": "lune",
@@ -21,7 +22,8 @@
         "license": "Domaine public",
         "difficulty": 1,
         "duration": 20,
-        "measures": 8
+        "measures": 8,
+        "genre": "Traditionnel"
     },
     {
         "id": "jacques",
@@ -33,7 +35,8 @@
         "license": "Domaine public",
         "difficulty": 1.3,
         "duration": 20,
-        "measures": 8
+        "measures": 8,
+        "genre": "Traditionnel"
     },
     {
         "id": "twinkle",
@@ -45,7 +48,8 @@
         "license": "Domaine public",
         "difficulty": 0.7,
         "duration": 19,
-        "measures": 16
+        "measures": 16,
+        "genre": "Traditionnel"
     },
     {
         "id": "menuet",
@@ -57,7 +61,8 @@
         "license": "Domaine public",
         "difficulty": 2.4,
         "duration": 12,
-        "measures": 8
+        "measures": 8,
+        "genre": "Classique"
     },
     {
         "id": "prelude",
@@ -69,6 +74,7 @@
         "license": "Domaine public",
         "difficulty": 3.7,
         "duration": 15,
-        "measures": 4
+        "measures": 4,
+        "genre": "Classique"
     }
 ]

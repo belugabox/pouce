@@ -1,6 +1,6 @@
 import { hc } from 'hono/client';
 
-import type { ApiType, Level, ReportReason, Sort } from '@server/types';
+import type { ApiType, Genre, Level, ReportReason, Sort } from '@server/types';
 
 /** Client typé de l'API (`/api`, servie par le même domaine). */
 export const api = hc<ApiType>('/api');
@@ -43,6 +43,9 @@ export const json = async <R extends AnyResponse>(
 export interface CatalogQuery {
     q?: string;
     level?: Level;
+    genre?: Genre;
+    /** Toutes les versions d'un morceau. */
+    group?: string;
     sort?: Sort;
     offset?: number;
     limit?: number;

@@ -4,13 +4,15 @@ import {
     COMPOSERS,
     attribute,
     fixMojibake,
+    looksBroken,
     normalizeName,
 } from './composers';
 
 /**
- * Choix des lignes de `PDMX.csv` : piano seul, licence CC-0 ou domaine
- * public sans conflit, meilleure version de chaque morceau, œuvre du
- * domaine public (`composers.ts`).
+ * Choix des lignes de `PDMX.csv` : piano seul, meilleure version de chaque
+ * morceau. Pas de filtre sur les droits (projet personnel) : la licence
+ * déclarée est gardée telle quelle, et `composers.ts` ne sert qu'à
+ * reconnaître le compositeur.
  */
 
 /** Colonnes de `PDMX.csv` utilisées. */
@@ -74,11 +76,31 @@ export const popularity = (
     return Math.round(score * 1000) / 1000;
 };
 
+const PIANO_NOTE =
+    /\s*[([]+\s*(?:for\s+)?(?:solo\s+)?piano(?:\s+(?:solo|version|cover|arrangement|arr\.?))?\s*[)\]]+/gi;
+const PIANO_END =
+    /[\s\-–:|.,]*\b(?:(?:easy|facile)\s+)?piano\s+(?:solo|cover|version|arrangement|arr\.?|facile)\s*$/i;
+
+/**
+ * Titre sans les mentions « piano » qui n'apprennent rien dans une
+ * bibliothèque de piano : « Over The Rainbow ((Piano)) », « Toad's Factory -
+ * Piano Cover ». « Sonata for Piano » reste tel quel.
+ */
+export const tidyTitle = (title: string) => {
+    const tidy = title
+        .replace(PIANO_NOTE, '')
+        .replace(PIANO_END, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return tidy || title.trim();
+};
+
 /**
  * Titre sans le compositeur collé devant ou derrière
  * (« Debussy Claude - La plus que lente », « Hosanna - J. B. Dykes »).
  */
-export const cleanTitle = (title: string, composer: string | null) => {
+export const cleanTitle = (raw: string, composer: string | null) => {
+    const title = tidyTitle(raw);
     const parts = title.split(/\s+[-–]\s+/);
     if (parts.length < 2 || !composer) return title.trim();
     const entry = COMPOSERS.find((x) => x.name === composer);
@@ -97,10 +119,40 @@ export const cleanTitle = (title: string, composer: string | null) => {
     return (kept.length ? kept.join(' - ') : title).trim();
 };
 
+/** Ce qui suit le nom de l'auteur dans un champ « compositeur » libre. */
+const CREDITS =
+    /\s*(?:[\n\r(/|]|\b(?:arranged|arr\.?|arrangement|transcribed|transcriber|transc\.?|performed|lyrics|words|orchestrated|piano (?:cover|arr))(?![a-z]))/i;
+/** Ce qui le précède. */
+const PREFIX =
+    /^(?:composer|composed by|music(?: by)?|artist|by|orig\.|org\.?|original(?: composer)?)\s*[:-]?\s*/i;
+
+/**
+ * Nom de l'auteur, quand le compositeur n'est pas reconnu : le premier
+ * champ qui en donne un, sans mention d'arrangement ni de transcription
+ * (« Koji KondoArranged by… » → « Koji Kondo »).
+ */
+export const authorName = (...fields: (string | undefined)[]) => {
+    for (const field of fields) {
+        if (!field || looksBroken(field)) continue;
+        const name = field
+            // Mention collée au nom : « Koji KondoArranged », « Obataarr. ».
+            .replace(
+                /([a-z])(?=(?:Arranged|Arr\b|Arr[.:]|arr\.|Transcribed|transc\.|Performed))/g,
+                '$1\n',
+            )
+            .split(CREDITS)[0]!
+            .replace(PREFIX, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (name.length >= 2) return name.slice(0, 80);
+    }
+    return '';
+};
+
 /** Ligne retenue (avant lecture du XML), ou null. */
 export const selectRow = (row: PdmxRow): Candidate | null => {
     const license = LICENSES[row.license];
-    if (!license || isTrue(row.license_conflict)) return null;
+    if (!license) return null;
     if (row.tracks !== '0') return null;
     if (!isTrue(row.is_best_unique_arrangement)) return null;
     if (!isTrue(row['subset:all_valid'])) return null;

@@ -3,9 +3,8 @@ import { indexScore, kids } from '../../../client/src/core/musicxml';
 import { parseXmlDocument } from './musicxml';
 
 /**
- * Lecture d'une partition PDMX : piano à deux portées seulement, paroles
- * retirées (leurs auteurs peuvent être protégés, et le moteur n'en a pas
- * besoin), difficulté estimée par le moteur du client.
+ * Lecture d'une partition PDMX : piano à deux portées seulement, difficulté
+ * estimée par le moteur du client.
  */
 
 export interface Analysis {
@@ -27,13 +26,6 @@ export type Rejection =
 /** Au moins 4 mesures, au plus 1 500 (les très longues partitions sont lourdes). */
 const MIN_NOTES = 24;
 const MAX_MEASURES = 1500;
-
-/** Sans paroles (`<lyric>`), ni droits d'auteur écrits (`<rights>`). */
-export const stripXml = (xml: string) =>
-    xml
-        .replace(/<lyric\b[^>]*\/>/g, '')
-        .replace(/<lyric\b[\s\S]*?<\/lyric>/g, '')
-        .replace(/<rights\b[\s\S]*?<\/rights>/g, '');
 
 /** Compositeur et titre écrits dans le XML, sans DOM (lecture rapide). */
 export const quickMeta = (xml: string) => {
@@ -60,7 +52,7 @@ export const quickMeta = (xml: string) => {
 
 export const analyze = (raw: string): Analysis | Rejection => {
     if (/<score-timewise\b/.test(raw.slice(0, 5000))) return 'timewise';
-    const xml = stripXml(raw);
+    const xml = raw;
     let doc: Document;
     try {
         doc = parseXmlDocument(xml);

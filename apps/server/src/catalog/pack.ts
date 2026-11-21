@@ -7,7 +7,7 @@ import { z } from 'zod';
 import type { Db } from '../db';
 import { scores } from '../db/schema';
 import type { Logger } from '../tools/logger';
-import { LEVELS } from '../types';
+import { GENRES, LEVELS } from '../types';
 import { getMeta, setMeta } from './store';
 
 /**
@@ -16,7 +16,7 @@ import { getMeta, setMeta } from './store';
  * base64. Chargé au démarrage quand le fichier a changé.
  */
 
-/** Licences admises dans le catalogue partagé. */
+/** Licences déclarées dans PDMX pour le piano (non vérifiées). */
 export const ALLOWED_LICENSES = ['CC0', 'Domaine public'] as const;
 
 export const packEntrySchema = z.object({
@@ -33,6 +33,8 @@ export const packEntrySchema = z.object({
     popularity: z.number().nullable(),
     duration: z.number().nullable(),
     measures: z.number().int().nullable(),
+    // Genre inconnu (paquet d'une version précédente) : sans genre.
+    genre: z.enum(GENRES).nullable().default(null).catch(null),
     /** MusicXML compressé (gzip), en base64. */
     xmlGz: z.string().min(1),
 });

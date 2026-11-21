@@ -107,7 +107,7 @@ describe('API', () => {
 
     it('enregistre un signalement, puis limite les envois', async () => {
         const res = await report('menuet', {
-            reason: 'copyright',
+            reason: 'wrong',
             message: 'Arrangement protégé',
         });
         expect(res.status).toBe(201);
@@ -115,7 +115,7 @@ describe('API', () => {
         expect(rows).toHaveLength(1);
         expect(rows[0]).toMatchObject({
             scoreId: 'menuet',
-            reason: 'copyright',
+            reason: 'wrong',
             message: 'Arrangement protégé',
         });
         for (let i = 0; i < 9; i++) {

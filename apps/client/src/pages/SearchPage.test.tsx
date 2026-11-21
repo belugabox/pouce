@@ -11,9 +11,10 @@ import * as api from '@/services/api';
 import {
     addImport,
     closeDb,
-    keepLibraryPiece,
+    listFavorites,
     pieceKey,
     saveAnnotations,
+    setFavorite,
 } from '@/storage/db';
 import { scoreXml } from '@/test/scores';
 
@@ -39,6 +40,7 @@ const entry = (
     sourceUrl: null,
     duration: 75,
     measures: 16,
+    genre: 'Traditionnel',
 });
 
 const CATALOG = [
@@ -65,8 +67,20 @@ const fakeSearch = async ({
     const items = found.filter((e) => !level || e.level === level);
     return {
         total: items.length,
-        items: items.slice(offset, offset + limit),
+        items: items
+            .slice(offset, offset + limit)
+            .map((e) => ({ ...e, group: e.id, versions: 1 })),
         levels,
+        genres: {
+            Classique: 0,
+            'Films et séries': 0,
+            'Jeux vidéo': 0,
+            'Pop et rock': 0,
+            Jazz: 0,
+            Traditionnel: found.length,
+            Religieux: 0,
+            Autres: 0,
+        },
     };
 };
 
@@ -94,17 +108,29 @@ afterEach(async () => {
     await closeDb();
 });
 
+/** Ligne de détails d'une partition (le niveau y est dans un `span`). */
+const details = (text: string) => (_: string, el: Element | null) =>
+    el?.tagName === 'P' && el.textContent === text;
+
+const openTab = async (name: RegExp) =>
+    fireEvent.click(await screen.findByRole('tab', { name }));
+
 describe('SearchPage', () => {
     it('affiche le catalogue avec les niveaux et la durée', async () => {
         renderPage();
         expect(await screen.findByText('Frère Jacques')).toBeTruthy();
         expect(screen.getByText('Menuet en sol majeur')).toBeTruthy();
-        expect(screen.getByText('2 partitions')).toBeTruthy();
-        expect(screen.getByText('Traditionnel · 1 min 15 s')).toBeTruthy();
-        // Puces de niveau, avec le nombre de résultats.
-        expect(screen.getByText('Facile 1')).toBeTruthy();
-        // Rien sur l'appareil : pas de section.
-        expect(screen.queryByText('Sur cet appareil')).toBeNull();
+        expect(
+            screen.getByRole('tab', { name: /^Bibliothèque\s*2$/ }),
+        ).toBeTruthy();
+        expect(
+            screen.getByText(details('Débutant · Traditionnel · 1 min 15 s')),
+        ).toBeTruthy();
+        // Menu de niveau, avec le nombre de résultats.
+        expect(screen.getByRole('option', { name: 'Facile (1)' })).toBeTruthy();
+        // Ni favori ni import : onglets sans nombre.
+        expect(screen.getByRole('tab', { name: 'Favoris' })).toBeTruthy();
+        expect(screen.getByRole('tab', { name: 'Imports' })).toBeTruthy();
     });
 
     it('cherche avec les paramètres de l’adresse', async () => {
@@ -129,7 +155,7 @@ describe('SearchPage', () => {
         ).toBeTruthy();
     });
 
-    it('montre les partitions de l’appareil et le nombre de doigtés', async () => {
+    it('montre les favoris, les imports et le nombre de doigtés', async () => {
         const p = await addImport({
             title: 'Ma sonate',
             composer: 'Moi',
@@ -140,27 +166,65 @@ describe('SearchPage', () => {
             f: { a: 1, b: 2 },
             auto: {},
         });
-        await keepLibraryPiece({ ...CATALOG[1]!, xml: '<a/>' });
+        await setFavorite({ ...CATALOG[1]!, source: 'catalogue' }, true);
         await saveAnnotations(pieceKey('catalogue', 'menuet'), {
             f: { a: 1 },
             auto: {},
         });
         renderPage();
-        expect(await screen.findByText('Sur cet appareil')).toBeTruthy();
-        expect(await screen.findByText('Moi · 2 doigtés')).toBeTruthy();
+        await openTab(/^Favoris\s*1$/);
         expect(
-            await screen.findAllByText(
-                'Christian Petzold · 1 min 15 s · 1 doigté',
+            await screen.findByText(
+                details('Facile · Christian Petzold · 1 min 15 s · 1 doigté'),
             ),
-        ).toHaveLength(2);
-        expect(screen.getByText('Avancé')).toBeTruthy();
+        ).toBeTruthy();
+        await openTab(/^Imports\s*1$/);
+        expect(
+            await screen.findByText(details('Avancé · Moi · 2 doigtés')),
+        ).toBeTruthy();
+        // Onglet gardé dans l'adresse ; filtré par la recherche.
+        fireEvent.change(screen.getByLabelText('Rechercher une partition'), {
+            target: { value: 'zzz' },
+        });
+        expect(
+            await screen.findByText('Aucun import pour cette recherche.'),
+        ).toBeTruthy();
+    });
+
+    it('met en favori depuis la liste, et retire', async () => {
+        vi.spyOn(api, 'fetchScore').mockResolvedValue({
+            ...CATALOG[0]!,
+            xml: '<a/>',
+        });
+        renderPage();
+        fireEvent.click(
+            await screen.findByRole('button', {
+                name: 'Ajouter « Frère Jacques » aux favoris',
+            }),
+        );
+        expect(
+            await screen.findByRole('tab', { name: /^Favoris\s*1$/ }),
+        ).toBeTruthy();
+        expect((await listFavorites()).map((f) => f.piece)).toEqual([
+            'catalogue/jacques',
+        ]);
+        await openTab(/^Favoris\s*1$/);
+        fireEvent.click(
+            await screen.findByRole('button', {
+                name: 'Retirer « Frère Jacques » des favoris',
+            }),
+        );
+        expect(
+            await screen.findByText(/Touche l’étoile d’une partition/),
+        ).toBeTruthy();
+        expect(await listFavorites()).toEqual([]);
     });
 
     it('reste utilisable hors ligne', async () => {
         vi.mocked(api.fetchCatalog).mockRejectedValue(
             new Error('Pas de connexion au serveur.'),
         );
-        await keepLibraryPiece({ ...CATALOG[0]!, xml: '<a/>' });
+        await setFavorite({ ...CATALOG[0]!, source: 'catalogue' }, true);
         renderPage('/?q=hors-ligne-test');
         expect(
             await screen.findByText(/La bibliothèque n’est pas joignable/),
@@ -168,6 +232,7 @@ describe('SearchPage', () => {
         fireEvent.change(screen.getByLabelText('Rechercher une partition'), {
             target: { value: 'frere' },
         });
+        await openTab(/^Favoris\s*1$/);
         expect(await screen.findByText('Frère Jacques')).toBeTruthy();
     });
 

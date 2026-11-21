@@ -142,15 +142,14 @@ d'interroger des sites tiers à la volée : recherche instantanée, tolérante a
 compositeur / difficulté, tri par popularité. Idée plus avancée : **recherche sémantique**
 (« un morceau lent et mélancolique pour débutant »).
 
-**Fait en v2** : index de 2 335 partitions de piano tirées de PDMX (`apps/server/scripts/pdmx`, voir le README).
+**Fait en v2** : index de 16 500 partitions de piano tirées de PDMX (`apps/server/scripts/pdmx`, voir le README).
 
-- Licence déclarée ≠ licence réelle : dans les 36 000 partitions de piano seul « CC0 / domaine public » sans conflit, les plus vues sont des chansons récentes (Lewis Capaldi, Coldplay…). On ne garde donc que les **œuvres** reconnues libres : compositeur mort en 1955 au plus tard (liste fermée, règle européenne des 70 ans), dates de vie écrites, œuvre libre célèbre reconnue par son titre, ou « traditionnel » dans le champ compositeur (la catégorie « Misc Traditional » et « Anonymous » ne suffisent pas : « Petit Papa Noël », chansons vocaloid…). Medleys et genres pop/rock/électro écartés.
-- Piano à deux portées vérifié dans le MusicXML (le CSV ne le dit pas), paroles et mentions de droits retirées.
+- Licence déclarée ≠ licence réelle : parmi les partitions de piano « CC0 / domaine public », les plus vues sont des chansons récentes (Lewis Capaldi, Coldplay…). Une première version ne gardait que les œuvres reconnues libres (2 335 partitions) ; depuis le 20 novembre 2026, **plus aucun tri sur les droits** (projet personnel, un essai avant tout) : tout le piano de PDMX entre.
+- Piano à deux portées vérifié dans le MusicXML (le CSV ne le dit pas).
 - Doublons : la version la plus populaire. Popularité = vues, favoris et notes, en échelle logarithmique.
 - Difficulté estimée par le client (`core/difficulty.ts`) : vitesse, accords, écarts, sauts, touches noires, voix, indépendance des mains, effort du meilleur doigté. Réglée sur des morceaux connus (comptines en Débutant, Menuet en sol en Facile, Lettre à Élise et 1er mouvement de la Sonate au clair de lune en Intermédiaire, Clair de lune de Debussy et Rhapsodie hongroise n° 2 en Avancé).
 - Recherche en mémoire côté serveur : tolérante aux fautes (distance d'édition), équivalences français/anglais (valse/waltz, « lettre à Élise »…), filtre par niveau, tri.
 - Bouton « Signaler » sur chaque fiche ; un outil en ligne de commande liste les signalements et retire une partition.
-- Limite : la règle des 70 ans est européenne ; certaines œuvres de compositeurs morts entre 1926 et 1955 restent protégées aux États-Unis (par exemple Rachmaninov, Prokofiev, Bartók, Ravel pour leurs œuvres publiées après 1930).
 
 ### PDF et photos → MusicXML (reconnaissance optique, OMR)
 
@@ -166,8 +165,9 @@ Pour exploiter les PDF d'IMSLP, un PDF acheté ou une partition papier photograp
 
 ## 4. Règles produit sur les droits d'auteur
 
-- L'index ou la bibliothèque partagée de l'appli ne contient **que** du domaine public ou du CC-0.
-- Pas de scraping de sites commerciaux, aucune source pirate (torrent, etc.).
+- ~~L'index ou la bibliothèque partagée de l'appli ne contient **que** du domaine public ou du CC-0.~~
+  Abandonné le 20 novembre 2026 : Pouce reste un projet personnel et expérimental, le catalogue prend
+  tout le piano de PDMX sans tri sur les droits.
 - Morceaux protégés (exemple étudié : musiques de _KPop Demon Hunters_, 2025, aucune version gratuite légale) :
   l'utilisateur achète la partition (ex. recueil officiel Hal Leonard « Easy Piano », arrangements à ~5 $
   sur Sheet Music Direct / Musicnotes), la convertit si besoin par OMR, puis l'importe.
@@ -187,7 +187,7 @@ Pour exploiter les PDF d'IMSLP, un PDF acheté ou une partition papier photograp
 
 Fait en v1 : hors ligne (PWA), suppression d'une partition importée.
 
-Fait en v2 : index PDMX, recherche serveur (fautes, niveaux, tris), fiche et signalement, partitions du catalogue gardées hors ligne, niveau estimé des imports, mains par portée, tempo de la suggestion, annuler / rétablir, impression avec les doigtés.
+Fait en v2 : index PDMX, recherche serveur (fautes, niveaux, tris), fiche et signalement, partitions du catalogue gardées hors ligne, niveau estimé des imports, mains par portée, tempo de la suggestion, annuler / rétablir, impression avec les doigtés, catalogue complet sans tri sur les droits, genres, versions regroupées, écoute, favoris (à la place de la liste des partitions ouvertes).
 
 ## 6. Conventions d'interface retenues
 

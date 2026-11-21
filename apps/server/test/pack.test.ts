@@ -26,6 +26,7 @@ const entry = (id: string, extra: Partial<PackEntry> = {}): PackEntry => ({
     popularity: 4.2,
     duration: 90,
     measures: 32,
+    genre: 'Classique',
     xmlGz: gzipSync(Buffer.from(`<score-partwise id="${id}"/>`)).toString(
         'base64',
     ),

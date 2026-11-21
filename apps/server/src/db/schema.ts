@@ -8,7 +8,7 @@ import {
 } from 'drizzle-orm/sqlite-core';
 
 /**
- * Partitions du catalogue partagé : domaine public ou CC-0 uniquement.
+ * Partitions du catalogue partagé (catalogue intégré et paquet PDMX).
  * Les partitions importées par chacun restent dans son navigateur.
  */
 export const scores = sqliteTable('scores', {
@@ -35,6 +35,8 @@ export const scores = sqliteTable('scores', {
     /** Durée estimée, en secondes. */
     duration: real('duration'),
     measures: integer('measures'),
+    /** Genre (`GENRES`), null si inconnu. */
+    genre: text('genre'),
     /** MusicXML compressé (gzip). */
     content: blob('content', { mode: 'buffer' }).notNull(),
     /** Retirée du catalogue (signalement vérifié). */

@@ -11,6 +11,8 @@ import { reports, scores } from './db/schema';
 import type { Logger } from './tools/logger';
 import {
     type CatalogEntry,
+    GENRES,
+    type Genre,
     LEVELS,
     type Level,
     REPORT_REASONS,
@@ -33,6 +35,9 @@ const REPORT_MAX = 10;
 const searchQuery = z.object({
     q: z.string().max(200).optional(),
     level: z.enum(LEVELS).optional(),
+    genre: z.enum(GENRES).optional(),
+    /** Toutes les versions d'un morceau (`group` d'un résultat). */
+    group: z.string().max(300).optional(),
     sort: z.enum(SORTS).optional(),
     offset: z.coerce.number().int().min(0).max(100_000).optional(),
     limit: z.coerce.number().int().min(1).max(100).optional(),
@@ -86,6 +91,7 @@ export const createApi = ({ db, logger, version, clientIp }: ApiDeps) => {
                 {
                     ...(entry as CatalogEntry),
                     level: entry.level as Level | null,
+                    genre: entry.genre as Genre | null,
                     xml: unpackXml(content),
                 },
                 200,

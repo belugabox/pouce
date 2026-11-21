@@ -19,6 +19,7 @@ interface CatalogFile {
     license: string;
     duration?: number | null;
     measures?: number | null;
+    genre?: string | null;
 }
 
 /**
@@ -37,7 +38,8 @@ export const seedCatalog = (db: Db, dir = CATALOG_DIR) => {
                 difficulty: entry.difficulty ?? null,
                 duration: entry.duration ?? null,
                 measures: entry.measures ?? null,
-                // Sans popularité : mis en avant dans la recherche.
+                genre: entry.genre ?? null,
+                // Sans popularité : classé parmi les plus populaires (search.ts).
                 popularity: null,
                 content: packXml(
                     readFileSync(

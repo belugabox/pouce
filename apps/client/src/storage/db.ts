@@ -29,6 +29,23 @@ export interface LibraryPiece extends CatalogEntry {
     openedAt: number;
 }
 
+/**
+ * Partition mise en favori : de quoi l'afficher sur l'accueil (la partition
+ * elle-même est dans `imports` ou, pour le hors-ligne, dans `library`).
+ */
+export interface FavoritePiece {
+    /** `pieceKey` de la partition. */
+    piece: string;
+    source: PieceSource;
+    id: string;
+    title: string;
+    composer: string;
+    arranger?: string;
+    level?: Level | null;
+    duration?: number | null;
+    addedAt: number;
+}
+
 /** Réglages de la suggestion pour une partition. */
 export interface PieceSettings {
     /** Main de chaque portée (`partie|portée`). */
@@ -47,12 +64,13 @@ interface PouceDb extends DBSchema {
     annotations: { key: string; value: SavedAnnotations };
     library: { key: string; value: LibraryPiece };
     settings: { key: string; value: PieceSettings & { piece: string } };
+    favorites: { key: string; value: FavoritePiece };
 }
 
 let opening: Promise<IDBPDatabase<PouceDb>> | null = null;
 
 const db = () =>
-    (opening ??= openDB<PouceDb>('pouce', 2, {
+    (opening ??= openDB<PouceDb>('pouce', 3, {
         upgrade(database, oldVersion) {
             if (oldVersion < 1) {
                 database.createObjectStore('imports', { keyPath: 'id' });
@@ -63,6 +81,9 @@ const db = () =>
             if (oldVersion < 2) {
                 database.createObjectStore('library', { keyPath: 'id' });
                 database.createObjectStore('settings', { keyPath: 'piece' });
+            }
+            if (oldVersion < 3) {
+                database.createObjectStore('favorites', { keyPath: 'piece' });
             }
         },
     }));
@@ -93,24 +114,43 @@ export const addImport = async (
     return saved;
 };
 
-/** Supprime une partition importée, ses doigtés et ses réglages. */
+/** Supprime une partition importée, ses doigtés, ses réglages et son favori. */
 export const deleteImport = async (id: string) => {
     const key = pieceKey('import', id);
     const tx = (await db()).transaction(
-        ['imports', 'annotations', 'settings'],
+        ['imports', 'annotations', 'settings', 'favorites'],
         'readwrite',
     );
     await Promise.all([
         tx.objectStore('imports').delete(id),
         tx.objectStore('annotations').delete(key),
         tx.objectStore('settings').delete(key),
+        tx.objectStore('favorites').delete(key),
         tx.done,
     ]);
 };
 
-/** Garde une partition du catalogue qu'on vient d'ouvrir. */
-export const keepLibraryPiece = async (piece: Omit<LibraryPiece, 'openedAt'>) =>
-    (await db()).put('library', { ...piece, openedAt: Date.now() });
+/** Copies gardées pour le hors-ligne, en plus de celles des favoris. */
+export const LIBRARY_MAX = 50;
+
+/**
+ * Garde une partition du catalogue qu'on vient d'ouvrir (hors-ligne). Au-delà
+ * de `LIBRARY_MAX`, les copies les plus anciennes sont oubliées, sauf celles
+ * des favoris ; les doigtés, eux, restent.
+ */
+export const keepLibraryPiece = async (
+    piece: Omit<LibraryPiece, 'openedAt'>,
+) => {
+    const database = await db();
+    await database.put('library', { ...piece, openedAt: Date.now() });
+    const favorites = new Set(await database.getAllKeys('favorites'));
+    const old = (await listLibrary())
+        .filter((p) => !favorites.has(pieceKey('catalogue', p.id)))
+        .slice(LIBRARY_MAX);
+    if (!old.length) return;
+    const tx = database.transaction('library', 'readwrite');
+    await Promise.all([...old.map((p) => tx.store.delete(p.id)), tx.done]);
+};
 
 export const getLibraryPiece = async (id: string) =>
     (await db()).get('library', id);
@@ -121,19 +161,41 @@ export const listLibrary = async () =>
         (a, b) => b.openedAt - a.openedAt,
     );
 
-/** Oublie une partition du catalogue (et ses doigtés) sur cet appareil. */
-export const forgetLibraryPiece = async (id: string) => {
-    const key = pieceKey('catalogue', id);
-    const tx = (await db()).transaction(
-        ['library', 'annotations', 'settings'],
-        'readwrite',
+/** Favoris, le plus récent d'abord. */
+export const listFavorites = async () =>
+    (await (await db()).getAll('favorites')).sort(
+        (a, b) => b.addedAt - a.addedAt,
     );
-    await Promise.all([
-        tx.objectStore('library').delete(id),
-        tx.objectStore('annotations').delete(key),
-        tx.objectStore('settings').delete(key),
-        tx.done,
-    ]);
+
+export const isFavorite = async (piece: string) =>
+    !!(await (await db()).getKey('favorites', piece));
+
+/** Met une partition en favori, ou l'en retire. */
+export const setFavorite = async (
+    piece: Omit<FavoritePiece, 'piece' | 'addedAt'>,
+    on: boolean,
+) => {
+    const key = pieceKey(piece.source, piece.id);
+    if (on) {
+        // Champs choisis : l'objet reçu peut en porter d'autres (ligne de liste).
+        const { source, id, title, composer, arranger, level, duration } =
+            piece;
+        await (
+            await db()
+        ).put('favorites', {
+            piece: key,
+            source,
+            id,
+            title,
+            composer,
+            arranger,
+            level,
+            duration,
+            addedAt: Date.now(),
+        });
+    } else {
+        await (await db()).delete('favorites', key);
+    }
 };
 
 /** Doigtés notés sur une partition (undefined : jamais ouverte). */
