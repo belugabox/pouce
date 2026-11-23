@@ -1,0 +1,9 @@
+Sons de piano : Salamander Grand Piano V3, par Alexander Holm (Yamaha C5),
+licence Creative Commons Attribution 3.0 (CC BY 3.0),
+https://creativecommons.org/licenses/by/3.0/
+Source : https://archive.org/details/SalamanderGrandPianoV3
+(version FLAC : https://github.com/sfzinstruments/SalamanderGrandPiano).
+
+Modifications pour Pouce : 30 notes (une toutes les tierces mineures, de la0
+à do8), deux couches de vélocité (6 : « p », 12 : « f »), mono, 44,1 kHz,
+raccourcies (2,5 à 7 s, fondu final), MP3 96 kb/s. Fichiers `<midi>-<p|f>.mp3`.
